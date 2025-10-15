@@ -1,0 +1,37 @@
+graph LR
+    %% Core Email Response Workflow
+    A[📧 Email Received] --> B[💾 Store in Database]
+    B --> C[👆 User Reviews Email]
+    C --> D[🤖 Generate AI Response]
+    D --> E[✏️ Edit Response]
+    E --> F[📤 Send Response]
+    F --> G[✅ Update Status]
+    
+    %% AI Generation Subprocess
+    H[📝 Email Content] --> I[⚙️ Load AI Settings]
+    I --> J[🤖 OpenAI API Call]
+    J --> K[✍️ Generate Response]
+    K --> L[✅ Validate & Save]
+    
+    %% System Components
+    M[📧 IMAP Service] --> N[🔧 Email Processing]
+    N --> O[💾 MongoDB Database]
+    O --> P[🖥️ React Frontend]
+    P --> Q[🤖 OpenAI API]
+    Q --> R[📧 SMTP Service]
+    
+    %% Email States
+    S[📨 UNREAD] --> T[⚙️ PROCESSING]
+    T --> U[✅ RESPONDED]
+    U --> V[📁 ARCHIVED]
+    
+    %% User Actions
+    W[👆 Select Email] --> X[👁️ Preview Email]
+    X --> Y[🤖 Generate Response]
+    Y --> Z[✏️ Edit Response]
+    Z --> AA[📤 Send Email]
+    
+    %% Settings Management
+    BB[⚙️ Configure AI] --> CC[📝 Set Prompt]
+    CC --> DD[💾 Save Settings]
+    DD --> EE[🤖 Apply to Generation] 

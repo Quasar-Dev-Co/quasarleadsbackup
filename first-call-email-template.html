@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>First Call Email Template</title>
+</head>
+<body>
+    
+<!-- HTML EMAIL TEMPLATE -->
+<div style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; max-width: 650px; margin: 0 auto; background: #ffffff; box-shadow: 0 0 20px rgba(0,0,0,0.1);">
+  
+  <!-- Header with Company Branding -->
+  <div style="background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 50%, #db2777 100%); padding: 45px 30px; text-align: center; color: white; position: relative; overflow: hidden;">
+    <div style="position: absolute; top: -50%; left: -50%; width: 200%; height: 200%; background: url('data:image/svg+xml,<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 100 100\"><circle cx=\"50\" cy=\"50\" r=\"2\" fill=\"white\" opacity=\"0.1\"/><circle cx=\"20\" cy=\"20\" r=\"1\" fill=\"white\" opacity=\"0.1\"/><circle cx=\"80\" cy=\"30\" r=\"1.5\" fill=\"white\" opacity=\"0.1\"/><circle cx=\"30\" cy=\"80\" r=\"1\" fill=\"white\" opacity=\"0.1\"/><circle cx=\"70\" cy=\"70\" r=\"2\" fill=\"white\" opacity=\"0.1\"/></svg>'); animation: float 20s infinite linear;"></div>
+    <div style="position: relative; z-index: 2;">
+      <h1 style="margin: 0; font-size: 36px; font-weight: 800; letter-spacing: -1px;">{{COMPANY_SERVICE}}</h1>
+      <p style="margin: 15px 0 0 0; font-size: 18px; opacity: 0.95; font-weight: 300;">by {{SENDER_NAME}}</p>
+      <div style="width: 60px; height: 4px; background: rgba(255,255,255,0.4); margin: 20px auto; border-radius: 2px;"></div>
+    </div>
+  </div>
+  
+  <!-- Main Content -->
+  <div style="padding: 50px 40px; background: white; line-height: 1.7;">
+    
+    <!-- Personalized Greeting -->
+    <div style="margin-bottom: 35px;">
+      <h2 style="color: #1f2937; margin: 0 0 8px 0; font-size: 28px; font-weight: 700;">Hi {{LEAD_NAME}},</h2>
+      <div style="width: 40px; height: 3px; background: linear-gradient(90deg, #4f46e5, #7c3aed); border-radius: 2px;"></div>
+    </div>
+    
+    <!-- Opening Hook -->
+    <p style="color: #374151; font-size: 17px; margin-bottom: 25px; font-weight: 400;">
+      I hope you're having a productive week! I've been researching innovative companies in the <strong style="color: #4f46e5;">{{TARGET_INDUSTRY}}</strong> space, and {{COMPANY_NAME}} immediately stood out to me.
+    </p>
+    
+    <!-- Value Proposition -->
+    <p style="color: #374151; font-size: 17px; margin-bottom: 30px;">
+      What caught my attention? Your company's approach to growth and innovation aligns perfectly with what we help <strong>{{TARGET_INDUSTRY}}</strong> leaders achieve through our {{COMPANY_SERVICE}} solutions.
+    </p>
+    
+    <!-- Social Proof & Benefits Box -->
+    <div style="background: linear-gradient(135deg, #f8faff 0%, #f1f5ff 100%); padding: 30px; border-radius: 16px; margin: 35px 0; border: 1px solid #e5e7eb; position: relative;">
+      <div style="position: absolute; top: -8px; left: 30px; background: #4f46e5; color: white; padding: 8px 20px; border-radius: 20px; font-size: 14px; font-weight: 600;">✨ Recent Results</div>
+      <div style="margin-top: 15px;">
+        <h3 style="color: #1f2937; margin: 0 0 20px 0; font-size: 22px; font-weight: 700;">What We've Achieved for {{TARGET_INDUSTRY}} Companies:</h3>
+        <div style="display: grid; gap: 15px;">
+          <div style="display: flex; align-items: center; gap: 15px;">
+            <div style="width: 50px; height: 50px; background: linear-gradient(135deg, #4f46e5, #7c3aed); border-radius: 12px; display: flex; align-items: center; justify-content: center; font-size: 24px;">🎯</div>
+            <div>
+              <div style="font-weight: 700; color: #1f2937; font-size: 16px;">3-5x Lead Generation Increase</div>
+              <div style="color: #6b7280; font-size: 14px;">Advanced targeting and automation strategies</div>
+            </div>
+          </div>
+          <div style="display: flex; align-items: center; gap: 15px;">
+            <div style="width: 50px; height: 50px; background: linear-gradient(135deg, #7c3aed, #db2777); border-radius: 12px; display: flex; align-items: center; justify-content: center; font-size: 24px;">⚡</div>
+            <div>
+              <div style="font-weight: 700; color: #1f2937; font-size: 16px;">20+ Hours Saved Weekly</div>
+              <div style="color: #6b7280; font-size: 14px;">Automated workflows and intelligent systems</div>
+            </div>
+          </div>
+          <div style="display: flex; align-items: center; gap: 15px;">
+            <div style="width: 50px; height: 50px; background: linear-gradient(135deg, #db2777, #f59e0b); border-radius: 12px; display: flex; align-items: center; justify-content: center; font-size: 24px;">📈</div>
+            <div>
+              <div style="font-weight: 700; color: #1f2937; font-size: 16px;">95%+ Quality Score</div>
+              <div style="color: #6b7280; font-size: 14px;">High-value prospects with verified contact data</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    
+    <!-- Specific Value for Their Company -->
+    <p style="color: #374151; font-size: 17px; margin-bottom: 25px; background: #fffbeb; padding: 20px; border-radius: 12px; border-left: 4px solid #f59e0b;">
+      💡 <strong>Specifically for {{COMPANY_NAME}}:</strong> I see huge potential to optimize your current lead generation approach and connect you with premium prospects in the {{TARGET_INDUSTRY}} sector who are actively looking for solutions like yours.
+    </p>
+    
+    <!-- Call to Action -->
+    <p style="color: #374151; font-size: 17px; margin-bottom: 35px;">
+      Would you be interested in a <strong style="color: #4f46e5;">brief 15-minute conversation</strong> this week? I'd love to share some specific insights about untapped opportunities in your market and show you exactly how we could help {{COMPANY_NAME}} accelerate its growth.
+    </p>
+    
+    <!-- CTA Button -->
+    <div style="text-align: center; margin: 40px 0;">
+      <a href="mailto:{{SENDER_EMAIL}}?subject=Let's Discuss Growth Opportunities for {{COMPANY_NAME}}&body=Hi {{SENDER_NAME}},%0D%0A%0D%0AI'm interested in learning more about how you can help {{COMPANY_NAME}} with our lead generation goals.%0D%0A%0D%0AWhen would be a good time for a 15-minute call?%0D%0A%0D%0ABest regards,%0D%0A{{LEAD_NAME}}" 
+         style="background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%); color: white; padding: 18px 40px; text-decoration: none; border-radius: 12px; display: inline-block; font-weight: 700; font-size: 18px; box-shadow: 0 8px 25px rgba(79, 70, 229, 0.3); transition: all 0.3s ease; border: none;">
+        🚀 Yes, Let's Talk!
+      </a>
+    </div>
+    
+    <div style="text-align: center; margin: 20px 0;">
+      <p style="color: #6b7280; font-size: 14px; margin: 0;">
+        Or simply reply to this email with your availability
+      </p>
+    </div>
+    
+    <!-- Personal Sign-off -->
+    <div style="margin-top: 45px; padding-top: 35px; border-top: 2px solid #f3f4f6;">
+      <p style="color: #374151; font-size: 17px; margin-bottom: 8px;">
+        Looking forward to connecting,
+      </p>
+      <div style="display: flex; align-items: center; gap: 15px; margin-top: 20px;">
+        <div style="width: 60px; height: 60px; background: linear-gradient(135deg, #4f46e5, #7c3aed); border-radius: 50%; display: flex; align-items: center; justify-content: center; color: white; font-weight: 700; font-size: 24px;">
+          {{SENDER_NAME | slice:0:1}}
+        </div>
+        <div>
+          <div style="font-weight: 700; color: #1f2937; font-size: 18px;">{{SENDER_NAME}}</div>
+          <div style="color: #6b7280; font-size: 15px;">{{COMPANY_SERVICE}} Specialist</div>
+          <div style="color: #4f46e5; font-size: 14px; font-weight: 600;">📧 {{SENDER_EMAIL}}</div>
+          <div style="color: #4f46e5; font-size: 14px; font-weight: 600;">🌐 {{WEBSITE_URL}}</div>
+        </div>
+      </div>
+    </div>
+  </div>
+  
+  <!-- Footer -->
+  <div style="background: #f9fafb; padding: 30px; text-align: center; border-top: 1px solid #e5e7eb;">
+    <p style="color: #6b7280; font-size: 13px; margin: 0 0 10px 0; line-height: 1.5;">
+      You're receiving this email because we believe our {{COMPANY_SERVICE}} solutions can help {{COMPANY_NAME}} achieve exceptional growth in the {{TARGET_INDUSTRY}} market.
+    </p>
+    <p style="color: #9ca3af; font-size: 12px; margin: 0;">
+      If you'd prefer not to receive future emails, simply reply with "UNSUBSCRIBE"
+    </p>
+  </div>
+  
+</div>
+
+<style>
+@keyframes float {
+  0% { transform: translateX(-100px) translateY(-100px); }
+  100% { transform: translateX(100px) translateY(100px); }
+}
+</style>
+
+</body>
+</html>
+
+<!-- 
+PLAIN TEXT VERSION:
+===================
+
+Subject: {{LEAD_NAME}}, I see huge potential for {{COMPANY_NAME}} growth
+
+Hi {{LEAD_NAME}},
+
+I hope you're having a productive week! I've been researching innovative companies in the {{TARGET_INDUSTRY}} space, and {{COMPANY_NAME}} immediately stood out to me.
+
+What caught my attention? Your company's approach to growth and innovation aligns perfectly with what we help {{TARGET_INDUSTRY}} leaders achieve through our {{COMPANY_SERVICE}} solutions.
+
+RECENT RESULTS FOR {{TARGET_INDUSTRY}} COMPANIES:
+🎯 3-5x Lead Generation Increase - Advanced targeting and automation strategies
+⚡ 20+ Hours Saved Weekly - Automated workflows and intelligent systems  
+📈 95%+ Quality Score - High-value prospects with verified contact data
+
+SPECIFICALLY FOR {{COMPANY_NAME}}: I see huge potential to optimize your current lead generation approach and connect you with premium prospects in the {{TARGET_INDUSTRY}} sector who are actively looking for solutions like yours.
+
+Would you be interested in a brief 15-minute conversation this week? I'd love to share some specific insights about untapped opportunities in your market and show you exactly how we could help {{COMPANY_NAME}} accelerate its growth.
+
+Simply reply to this email with your availability, and I'll send over some time options that work for you.
+
+Looking forward to connecting,
+
+{{SENDER_NAME}}
+{{COMPANY_SERVICE}} Specialist
+📧 {{SENDER_EMAIL}}
+🌐 {{WEBSITE_URL}}
+
+---
+You're receiving this email because we believe our {{COMPANY_SERVICE}} solutions can help {{COMPANY_NAME}} achieve exceptional growth in the {{TARGET_INDUSTRY}} market.
+
+If you'd prefer not to receive future emails, simply reply with "UNSUBSCRIBE"
+
+--> 

@@ -1,0 +1,66 @@
+graph TD
+    %% Main Email Response System Flow
+    A[📧 IMAP Service] --> B[📥 Email Fetch]
+    B --> C[🔍 Parse & Extract]
+    C --> D[✅ Validate Fields]
+    D --> E[👤 Find/Create Lead]
+    E --> F[💾 Save to Database]
+    F --> G[📊 Update Frontend]
+    
+    G --> H[👆 User Clicks Generate]
+    H --> I[🤖 Load AI Settings]
+    I --> J[🔗 Call OpenAI API]
+    J --> K[✍️ Generate Response]
+    K --> L[💾 Save AI Response]
+    L --> M[📝 Show in Editor]
+    
+    M --> N[👆 User Reviews & Edits]
+    N --> O[📤 Prepare Email]
+    O --> P[📧 Send via SMTP]
+    P --> Q{✅ Success?}
+    Q -->|Yes| R[✅ Update Status to Sent]
+    Q -->|No| S[❌ Log Error]
+    R --> T[📊 Update Lead Status]
+    S --> U[⚠️ Mark as Failed]
+    
+    %% AI Generation Process
+    V[📧 Incoming Email] --> W[⚙️ Load AI Settings]
+    W --> X[📝 Configured Prompt]
+    X --> Y[🤖 OpenAI GPT-4]
+    Y --> Z[✍️ Generate Response]
+    Z --> AA[✅ Validate Quality]
+    AA --> BB[💾 Save to DB]
+    
+    %% Email States
+    CC[📨 UNREAD] --> DD[⚙️ PROCESSING]
+    DD --> EE[✅ RESPONDED]
+    EE --> FF[📁 ARCHIVED]
+    
+    %% Frontend Flow
+    GG[🖥️ Dashboard Loads] --> HH[📋 Display Email List]
+    HH --> II[👆 User Selects Email]
+    II --> JJ[👁️ Preview Dialog]
+    JJ --> KK[🤖 Generate Response]
+    KK --> LL[✏️ Edit & Send]
+    
+    %% Settings Flow
+    MM[⚙️ Settings Panel] --> NN[📝 Configure AI]
+    NN --> OO[✅ Validate Settings]
+    OO --> PP[💾 Save to Database]
+    
+    %% Error Handling
+    QQ[❌ Error Occurs] --> RR[📝 Log Error]
+    RR --> SS[🔄 Retry or Fail]
+    
+    %% Performance
+    TT[📊 Track Metrics] --> UU[📈 Calculate Stats]
+    UU --> VV[💾 Store Analytics]
+    VV --> WW[📊 Display Dashboard]
+    
+    %% System Integration
+    XX[📧 IMAP Service] --> YY[🔧 Email Processing API]
+    YY --> ZZ[🖥️ Frontend Interface]
+    ZZ --> AAA[🤖 AI Generation]
+    AAA --> BBB[💾 Database Storage]
+    BBB --> CCC[📧 SMTP Service]
+    CCC --> DDD[�� Lead Management] 

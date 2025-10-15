@@ -1,0 +1,44 @@
+{
+  "functions": {
+    "app/api/cron/**": {
+      "maxDuration": 300
+    },
+    "app/api/jobs/**": {
+      "maxDuration": 300
+    },
+    "app/api/leads/**": {
+      "maxDuration": 60
+    }
+  },
+  "crons": [
+
+    {
+      "path": "/api/cron/process-search-jobs",
+      "schedule": "*/5 * * * *"
+    },
+    {
+      "path": "/api/cron/process-temporary-leads",
+      "schedule": "* * * * *"
+    },
+    {
+      "path": "/api/cron/email-automation",
+      "schedule": "* * * * *"
+    },
+    {
+      "path": "/api/cron/fetch-incoming-emails",
+      "schedule": "* * * * *"
+    },
+    {
+      "path": "/api/cron/process-email-responses",
+      "schedule": "* * * * *"
+    },
+    {
+      "path": "/api/cron/email-workflow",
+      "schedule": "*/3 * * * *"
+    },
+    {
+      "path": "/api/cron/email-cleanup",
+      "schedule": "* * * * *"
+    }
+  ]
+} 

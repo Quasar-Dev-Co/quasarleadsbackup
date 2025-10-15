@@ -1,0 +1,74 @@
+import mongoose, { Schema, Document } from 'mongoose';
+
+export interface IEmailTemplate extends Document {
+  stage: string;
+  subject: string;
+  htmlContent: string;
+  textContent: string;
+  isActive: boolean;
+  variables: string[];
+  userId?: string; // User ID who created this template
+  timing?: {
+    delay: number;
+    unit: 'minutes' | 'hours' | 'days';
+    description: string;
+  };
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+const EmailTemplateSchema = new Schema<IEmailTemplate>({
+  stage: {
+    type: String,
+    required: true
+  },
+  userId: {
+    type: String,
+    trim: true,
+    index: true
+  },
+  subject: {
+    type: String,
+    required: true
+  },
+  htmlContent: {
+    type: String,
+    required: true
+  },
+  textContent: {
+    type: String,
+    default: ''
+  },
+  isActive: {
+    type: Boolean,
+    default: true
+  },
+  variables: [{
+    type: String
+  }],
+  timing: {
+    delay: {
+      type: Number,
+      default: 7
+    },
+    unit: {
+      type: String,
+      enum: ['minutes', 'hours', 'days'],
+      default: 'days'
+    },
+    description: {
+      type: String,
+      default: 'Send after 7 days'
+    }
+  }
+}, {
+  timestamps: true
+});
+
+// Create compound index for stage + userId to allow multiple users to have templates with the same stage
+// but prevent duplicate stages per user
+EmailTemplateSchema.index({ stage: 1, userId: 1 });
+
+const EmailTemplate = mongoose.models.EmailTemplate || mongoose.model<IEmailTemplate>('EmailTemplate', EmailTemplateSchema);
+
+export default EmailTemplate; 

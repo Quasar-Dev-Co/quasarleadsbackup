@@ -1,0 +1,115 @@
+graph TD
+    %% Email Reception Flow
+    A[IMAP Service] --> B[Email Fetch]
+    B --> C[Parse & Extract]
+    C --> D[Validate Fields]
+    D --> E[Find/Create Lead]
+    E --> F[Save IncomingEmail]
+    F --> G[Update Frontend Display]
+    
+    %% AI Response Generation Flow
+    H[User Clicks Generate] --> I[Select Email for Response]
+    I --> J[Check Existing Response]
+    J --> K{Response Exists?}
+    K -->|Yes| L[Return Existing Response]
+    K -->|No| M[Load AI Settings from DB]
+    M --> N[Call OpenAI API]
+    N --> O[Generate Response]
+    O --> P[Save AIResponse to DB]
+    P --> Q[Return to Frontend]
+    Q --> R[Show in Editor for Edit]
+    
+    %% Email Sending Flow
+    S[User Clicks Send] --> T[Review & Edit Response]
+    T --> U[Prepare Email Content]
+    U --> V[Send via SMTP Service]
+    V --> W{Email Sent Successfully?}
+    W -->|Yes| X[Update Status to Sent]
+    W -->|No| Y[Log Error & Update Status to Failed]
+    X --> Z[Update IncomingEmail Status]
+    Z --> AA[Update Lead Status in CRM]
+    Y --> BB[Log Error Details]
+    
+    %% AI Generation Process
+    CC[Incoming Email Content] --> DD[Load AI Settings from DB]
+    DD --> EE[Configured Prompt from Frontend]
+    EE --> FF[Build System Prompt with Directives]
+    FF --> GG[Call OpenAI API with 15s timeout]
+    GG --> HH[OpenAI GPT-4 API]
+    HH --> II[Generate Response Content with Signature]
+    II --> JJ[Validate Response Quality & Format]
+    JJ --> KK[Check Content Length & Structure]
+    KK --> LL[Save to Database with Metadata]
+    
+    %% Email Processing States
+    MM[UNREAD - New Email] --> NN[PROCESSING - AI Generating]
+    NN --> OO[RESPONDED - Response Sent]
+    OO --> PP[ARCHIVED - Completed Thread]
+    
+    %% Frontend Interface Flow
+    QQ[Email Dashboard Loads] --> RR[Display Email List with Tabs]
+    RR --> SS[User Selects Email to View]
+    SS --> TT[Email Preview Dialog Opens]
+    TT --> UU[Show Email Details & Metadata]
+    UU --> VV[Display Email Content & Actions]
+    VV --> WW[User Clicks Generate Response]
+    WW --> XX[AI Response Generated & Saved]
+    XX --> YY[Response Editor Dialog Opens]
+    YY --> ZZ[User can Edit Response & Send]
+    
+    %% Settings Configuration Flow
+    AAA[User Opens Settings Panel] --> BBB[Settings Panel Loads Current Settings]
+    BBB --> CCC[Configure AI Parameters & Prompt]
+    CCC --> DDD[Validate Settings Input & Format]
+    DDD --> EEE{Settings Valid?}
+    EEE -->|Yes| FFF[Apply Changes to Form]
+    EEE -->|No| GGG[Show Validation Errors]
+    FFF --> HHH[Update Settings in Memory]
+    HHH --> III[Save to Database & Confirm Success]
+    
+    %% Error Handling Flow
+    JJJ[Error Occurs - API, DB, Network] --> KKK[Log Error with Context & Stack]
+    KKK --> LLL[Determine Error Type & Severity]
+    LLL --> MMM[Handle Based on Type]
+    MMM --> NNN[Update Status to Failed]
+    NNN --> OOO[Show User Friendly Error Message]
+    OOO --> PPP{Retryable?}
+    PPP -->|Yes| QQQ[Retry Operation]
+    PPP -->|No| RRR[Mark as Failed]
+    
+    %% Performance Monitoring Flow
+    SSS[Track Operation Start Time] --> TTT[Measure Response Times & Success]
+    TTT --> UUU[Calculate Metrics - Success Rate, Avg Time]
+    UUU --> VVV[Store Metrics in DB for Analytics]
+    VVV --> WWW[Retrieve Historical Metrics from DB]
+    WWW --> XXX[Aggregate Data by Time Period]
+    XXX --> YYY[Generate Reports & Charts]
+    YYY --> ZZZ[Display Dashboard Metrics to User]
+    
+    %% System Integration Map
+    AAAA[IMAP Service - External] --> BBBB[Email Processing API]
+    BBBB --> CCCC[Frontend Interface - React]
+    CCCC --> DDDD[User Interaction & Control]
+    DDDD --> EEEE[Email Fetching & Parsing]
+    EEEE --> FFFF[AI Generation - OpenAI]
+    FFFF --> GGGG[Settings Management & Storage]
+    GGGG --> HHHH[Response Generation & Editing]
+    HHHH --> IIII[Database Storage - MongoDB]
+    IIII --> JJJJ[SMTP Service - External]
+    JJJJ --> KKKK[Lead Management - CRM]
+    KKKK --> LLLL[Email Sending & Tracking]
+    
+    %% Styling
+    classDef startEnd fill:#e1f5fe,stroke:#01579b,stroke-width:2px
+    classDef process fill:#f3e5f5,stroke:#4a148c,stroke-width:2px
+    classDef decision fill:#fff3e0,stroke:#e65100,stroke-width:2px
+    classDef error fill:#ffebee,stroke:#c62828,stroke-width:2px
+    classDef success fill:#e8f5e8,stroke:#2e7d32,stroke-width:2px
+    classDef external fill:#fce4ec,stroke:#ad1457,stroke-width:2px
+    
+    class A,QQ,AAA,JJJ,SSS,AAAA startEnd
+    class B,C,D,E,F,G,H,I,M,N,O,P,Q,R,S,T,U,V,X,Z,AA,CC,DD,EE,FF,GG,HH,II,JJ,KK,LL,MM,NN,OO,PP,RR,SS,TT,UU,VV,WW,XX,YY,ZZ,BBB,CCC,DDD,FFF,HHH,III,KKK,LLL,MMM,OOO,QQQ,TTT,UUU,VVV,WWW,XXX,YYY,ZZZ,BBBB,CCCC,DDDD,EEEE,FFFF,GGGG,HHHH,IIII,KKKK,LLLL process
+    class K,W,EEE,PPP decision
+    class Y,BB,GGG,NNN,RRR error
+    class L,X,III,ZZZ success
+    class AAAA,JJJJ external 
