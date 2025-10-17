@@ -3,7 +3,11 @@ import mongoose, { Schema, Document } from 'mongoose';
 export interface IEmailTemplate extends Document {
   stage: string;
   subject: string;
-  htmlContent: string;
+  contentPrompt: string; // NEW: AI prompt for generating email content
+  htmlDesign: string; // NEW: HTML design template/wrapper
+  emailSignature: string; // NEW: Email signature
+  mediaLinks: string; // NEW: Media content (images, videos)
+  htmlContent: string; // LEGACY: Keep for backwards compatibility
   textContent: string;
   isActive: boolean;
   variables: string[];
@@ -31,9 +35,25 @@ const EmailTemplateSchema = new Schema<IEmailTemplate>({
     type: String,
     required: true
   },
+  contentPrompt: {
+    type: String,
+    default: ''
+  },
+  htmlDesign: {
+    type: String,
+    default: ''
+  },
+  emailSignature: {
+    type: String,
+    default: ''
+  },
+  mediaLinks: {
+    type: String,
+    default: ''
+  },
   htmlContent: {
     type: String,
-    required: true
+    default: '' // Not required anymore (backwards compatibility)
   },
   textContent: {
     type: String,

@@ -22,32 +22,32 @@ export async function POST(request: NextRequest) {
     }
 
     // Use OpenAI to generate the email template
-    const systemPrompt = `You are an expert B2B email copywriter who creates highly effective cold outreach emails.
+    const systemPrompt = `You are an expert B2B email copywriter who creates email templates for automated outreach systems.
 
-CRITICAL EMAIL STRUCTURE TO FOLLOW:
-Use this professional one-paragraph business email structure:
-1. Subject: Clear and specific topic (short and direct)
-2. Greeting: Dear [Name]
-3. Opening Line: Polite introduction or context - who you are or why you're writing
-4. Main Message: State your purpose clearly with key information that shows value or reason for contact
-5. Call to Action: What you'd like the recipient to do next (reply, schedule call, etc.)
-6. Closing: Short, polite ending line
-7. Signature: Full name, position, company, contact info
+IMPORTANT: You need to generate template COMPONENTS that will be used by AI during email automation:
 
-REQUIREMENTS:
-- You MUST include ALL these placeholders: {{LEAD_NAME}}, {{COMPANY_NAME}}, {{COMPANY_REVIEW}}, {{SENDER_NAME}}, {{SENDER_EMAIL}}, {{COMPANY_SERVICE}}, {{TARGET_INDUSTRY}}, {{WEBSITE_URL}}
-- If {{COMPANY_REVIEW}} is available in the lead data, reference their reviews/ratings naturally to show you did research
-- Use inline CSS styles for email compatibility
-- Mobile-responsive HTML design
-- Professional but friendly tone
-- Clear call-to-action
-- Keep email concise and focused
+1. SUBJECT: A clear, compelling subject line (plain text)
+2. CONTENT PROMPT: A detailed prompt/instruction that describes what the email should say. This will be used by AI to generate personalized content for each lead.
+3. SIGNATURE: Professional email signature with placeholders
 
-Return ONLY valid JSON in this format:
+CONTENT PROMPT REQUIREMENTS:
+- Write a detailed prompt describing the email's message, tone, and purpose
+- Include instructions about what to mention (company service, value proposition, etc.)
+- Mention to reference {{COMPANY_REVIEW}} if available
+- Specify the tone (professional, friendly, etc.)
+- Include call-to-action instructions
+Example: "Write a professional email introducing our AI-powered lead generation service. Mention how we can help them improve their business. If company reviews are available, reference them to show we did research. Keep it friendly and professional. Include a call-to-action to schedule a call."
+
+SIGNATURE REQUIREMENTS:
+- Use HTML formatting
+- Include these placeholders: {{SENDER_NAME}}, {{SENDER_EMAIL}}, {{WEBSITE_URL}}
+Example: "Best regards,<br>{{SENDER_NAME}}<br>{{SENDER_EMAIL}}<br>{{WEBSITE_URL}}"
+
+Return ONLY valid JSON in this exact format:
 {
-  "subject": "Email subject line here",
-  "htmlContent": "Complete HTML email with inline styles and all required placeholders",
-  "textContent": "Plain text version with all required placeholders"
+  "subject": "Email subject here",
+  "contentPrompt": "Detailed prompt for AI to generate email content",
+  "signature": "HTML signature with placeholders"
 }`;
 
     const completion = await openai.chat.completions.create({
@@ -89,17 +89,27 @@ Return ONLY valid JSON in this format:
       });
     }
 
-    // Validate required fields
-    if (!template.subject || !template.htmlContent) {
-      throw new Error('Generated template is missing required fields');
+    // Validate required fields - support BOTH new (contentPrompt) and old (htmlContent) formats
+    if (!template.subject) {
+      throw new Error('Generated template is missing subject field');
+    }
+    
+    // Check if it's new format (contentPrompt) or old format (htmlContent)
+    const hasNewFormat = template.contentPrompt || template.signature;
+    const hasOldFormat = template.htmlContent;
+    
+    if (!hasNewFormat && !hasOldFormat) {
+      throw new Error('Generated template must have either contentPrompt or htmlContent');
     }
 
     return NextResponse.json({
       success: true,
       template: {
         subject: template.subject,
-        htmlContent: template.htmlContent,
-        textContent: template.textContent || template.htmlContent.replace(/<[^>]*>/g, ''),
+        contentPrompt: template.contentPrompt || '',
+        signature: template.signature || '',
+        htmlContent: template.htmlContent || '',
+        textContent: template.textContent || '',
         stage
       },
       message: 'Template generated successfully'

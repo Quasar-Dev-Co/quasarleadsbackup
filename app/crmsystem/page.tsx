@@ -85,6 +85,8 @@ export interface Lead {
   // Additional fields from MongoDB
   googleAds?: boolean;
   organicRanking?: number;
+  rating?: number;
+  reviews?: number;
   location?: string;
   website?: string;
   dealValue?: number;

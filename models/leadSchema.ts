@@ -31,8 +31,8 @@ interface Lead extends Document {
   address?: string; // For Google Maps businesses
   latitude?: number;
   longitude?: number;
-  rating?: string; // Google Maps business rating
-  reviews?: string; // Google Maps business reviews
+  rating?: number; // Google Maps business rating (e.g., 4.5 out of 5)
+  reviews?: number; // Google Maps business review count (e.g., 127)
   // Auth/Executive information from OpenAI enrichment
   authInformation?: {
     company_name: string;
@@ -208,10 +208,10 @@ const leadSchema = new Schema<Lead>({
     type: Number
   },
   rating: {
-    type: String
+    type: Number
   },
   reviews: {
-    type: String
+    type: Number
   },
   // Auth/Executive information from OpenAI enrichment
   authInformation: {

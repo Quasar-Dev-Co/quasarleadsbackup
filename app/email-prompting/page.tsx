@@ -12,14 +12,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Switch } from "@/components/ui/switch";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { 
   Mail, 
-  Send, 
   Save, 
-  Eye, 
   RefreshCw, 
-  Wand2,
   Settings,
   TestTube,
   Copy,
@@ -27,10 +24,10 @@ import {
   AlertTriangle,
   Info,
   Sparkles,
-  X,
   Clock,
   Download,
-  Upload
+  Upload,
+  Wand2
 } from "lucide-react";
 import { toast } from "sonner";
 import { useEmailPromptingTranslations } from "@/hooks/use-email-prompting-translations";
@@ -102,17 +99,11 @@ export default function EmailPrompting() {
   const [activeTab, setActiveTab] = useState("called_once");
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [generating, setGenerating] = useState(false);
   const [testing, setTesting] = useState(false);
-  const [showPreview, setShowPreview] = useState(false);
+  const [generating, setGenerating] = useState(false);
   const [savingSettings, setSavingSettings] = useState(false);
   const [showTimingSettings, setShowTimingSettings] = useState(false);
   const [hasUnsavedTimingChanges, setHasUnsavedTimingChanges] = useState(false);
-  
-  // AI Generation Modal state
-  const [showAIModal, setShowAIModal] = useState(false);
-  const [aiPrompt, setAiPrompt] = useState("");
-  const [generatingCustom, setGeneratingCustom] = useState(false);
   
   // Company settings
   const [companySettings, setCompanySettings] = useState<CompanySettings>({
@@ -182,11 +173,14 @@ export default function EmailPrompting() {
     const template = templates.find(t => t.stage === activeTab);
     if (template) {
       setCurrentTemplate(template);
-      // Parse modular components if they exist
+      // Load modular components from new structure
       setEmailSubject(template.subject || "");
-      setGeneratedContent(extractContentFromHTML(template.htmlContent || ""));
-      setEmailSignature(extractSignatureFromHTML(template.htmlContent || ""));
-      setHtmlDesign(template.htmlContent || "");
+      setContentPrompt((template as any).contentPrompt || "");
+      setHtmlDesign((template as any).htmlDesign || "");
+      setEmailSignature((template as any).emailSignature || "");
+      setMediaLinks((template as any).mediaLinks || "");
+      // Clear generated content since we're using prompt-based system
+      setGeneratedContent("");
     } else {
       setCurrentTemplate({
         stage: activeTab,
@@ -303,9 +297,6 @@ ${emailSignature.replace(/<[^>]*>/g, '')}`;
       setSaving(true);
       console.log('Starting template save...');
       
-      // Assemble template from modular components
-      const { htmlContent, textContent } = assembleFinalTemplate();
-      
       // Validate template
       if (!emailSubject.trim()) {
         toast.error("Email subject is required");
@@ -313,8 +304,8 @@ ${emailSignature.replace(/<[^>]*>/g, '')}`;
         return;
       }
       
-      if (!generatedContent.trim() && !htmlDesign.trim()) {
-        toast.error("Email content is required. Generate content from prompt or provide HTML design.");
+      if (!contentPrompt.trim()) {
+        toast.error("Content prompt is required. This will be used to generate personalized content for each lead.");
         setSaving(false);
         return;
       }
@@ -332,10 +323,12 @@ ${emailSignature.replace(/<[^>]*>/g, '')}`;
       const templateData = {
         stage: activeTab,
         subject: emailSubject,
-        htmlContent,
-        textContent,
+        contentPrompt: contentPrompt,
+        htmlDesign: htmlDesign,
+        emailSignature: emailSignature,
+        mediaLinks: mediaLinks,
         isActive: currentTemplate.isActive !== undefined ? currentTemplate.isActive : true,
-        variables: extractVariables(htmlContent),
+        variables: extractVariables(contentPrompt + emailSignature),
         timing: currentTiming,
         userId
       };
@@ -509,233 +502,173 @@ ${emailSignature.replace(/<[^>]*>/g, '')}`;
     }
   };
 
-  // Generate ONLY content from prompt (new modular approach)
-  const generateContentFromPrompt = async () => {
-    try {
-      setGeneratingContent(true);
-      
-      if (!contentPrompt.trim()) {
-        toast.error("Please enter a content prompt describing what you want the email to say");
-        return;
-      }
-      
-      if (!companySettings.companyName.trim() || !companySettings.service.trim()) {
-        toast.error(t('fillCompanyNameAndService'));
-        return;
-      }
-      
-      const stageInfo = PIPELINE_STAGES(t).find(s => s.value === activeTab);
-      
-      const prompt = `Generate ONLY the main email content (body text) based on this prompt:
-      
-${contentPrompt}
 
-Company Context:
-- Company: ${companySettings.companyName}
-- Service: ${companySettings.service}
-- Industry: ${companySettings.industry}
-- Stage: ${stageInfo?.label}
-
-CRITICAL REQUIREMENTS:
-1. Generate ONLY the main content/body of the email (NO subject, NO signature)
-2. Use professional one-paragraph business email structure:
-   - Opening Line: Polite introduction or context
-   - Main Message: State purpose clearly with key information
-   - Call to Action: What you'd like recipient to do next
-   - Closing: Short, polite ending line
-3. MUST include these variables naturally: {{LEAD_NAME}}, {{COMPANY_NAME}}, {{COMPANY_REVIEW}}, {{SENDER_NAME}}, {{COMPANY_SERVICE}}, {{TARGET_INDUSTRY}}
-4. Return as plain HTML paragraph tags with inline styles
-5. Professional but friendly tone
-6. Keep concise and focused
-
-Return ONLY the HTML content (no JSON, just the HTML body content).`;
-
-      const response = await fetch('/api/generate-email-content', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          prompt,
-          stage: activeTab,
-          companySettings
-        }),
-      });
-
-      const data = await response.json();
-
-      if (data.success) {
-        setGeneratedContent(data.content);
-        toast.success("Email content generated successfully!");
-      } else {
-        toast.error(data.error || "Failed to generate content");
-      }
-    } catch (error) {
-      console.error('Error generating content:', error);
-      toast.error("Failed to generate content: " + (error as Error).message);
-    } finally {
-      setGeneratingContent(false);
-    }
-  };
-
-  // Generate template with AI (default)
-  const generateWithAI = async () => {
+  // Quick Generate - Generate ALL 7 email templates with AI and save to database
+  const quickGenerateAndSave = async () => {
     try {
       setGenerating(true);
       
-      // Validate company settings before generating
+      // Validate company settings
       if (!companySettings.companyName.trim() || !companySettings.service.trim()) {
-        toast.error(t('fillCompanyNameAndService'));
+        toast.error("Please fill in Company Name and Service in settings first");
+        setGenerating(false);
         return;
       }
       
-      const stageInfo = PIPELINE_STAGES(t).find(s => s.value === activeTab);
-      
-      const prompt = `Generate a professional email template for ${stageInfo?.label} in a CRM system.
-      
-      Company Details:
-      - Company: ${companySettings.companyName}
-      - Service: ${companySettings.service}
-      - Industry: ${companySettings.industry}
-      
-      Email Context: ${stageInfo?.description}
-      
-      IMPORTANT EMAIL STRUCTURE TO FOLLOW:
-      Use this one-paragraph professional business email structure:
-      1. Subject: Clear and specific topic (short and direct)
-      2. Greeting: Dear [Name]
-      3. Opening Line: Polite introduction or context
-      4. Main Message: State purpose clearly with key information that shows value
-      5. Call to Action: What you'd like the recipient to do next
-      6. Closing: Short, polite ending line
-      7. Signature: Full name, position, company, contact info
-      
-      Requirements:
-      - Use variables: {{LEAD_NAME}}, {{COMPANY_NAME}}, {{COMPANY_REVIEW}}, {{SENDER_NAME}}, {{SENDER_EMAIL}}, {{COMPANY_SERVICE}}, {{TARGET_INDUSTRY}}, {{WEBSITE_URL}}
-      - Follow the one-paragraph professional structure above
-      - If {{COMPANY_REVIEW}} data is available, reference their reviews/ratings naturally in the message
-      - Professional but friendly tone
-      - Include clear call-to-action
-      - HTML formatted with inline styles
-      - Mobile-responsive design
-      - Include company branding
-      
-      Return JSON with: subject, htmlContent, textContent`;
-
-      const response = await fetch('/api/generate-email-template', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          prompt,
-          stage: activeTab,
-          companySettings
-        }),
-      });
-
-      const data = await response.json();
-
-      if (data.success) {
-        setCurrentTemplate(prev => ({
-          ...prev,
-          subject: data.template.subject,
-          htmlContent: data.template.htmlContent,
-          textContent: data.template.textContent
-        }));
-        toast.success(t('templateGeneratedSuccess'));
-      } else {
-        toast.error(data.error || t('failedToGenerateTemplate'));
+      // Get current user ID
+      const userId = await auth.getCurrentUserId();
+      if (!userId) {
+        toast.error('User authentication required');
+        setGenerating(false);
+        return;
       }
+
+      const allStages = PIPELINE_STAGES(t);
+      let successCount = 0;
+      let failCount = 0;
+
+      toast.info(`🚀 Generating all ${allStages.length} email templates...`);
+
+      // Generate and save each stage template
+      for (const stageInfo of allStages) {
+        try {
+          // Create AI prompt to generate template with HTML design
+          const prompt = `Generate a complete email template for ${stageInfo.label} in a CRM email automation system.
+
+Company Information:
+- Company: ${companySettings.companyName}
+- Service: ${companySettings.service}
+- Industry: ${companySettings.industry}
+- Sender: ${companySettings.senderName}
+
+Stage Context: ${stageInfo.description}
+
+IMPORTANT: Generate these components separately:
+
+1. EMAIL SUBJECT: A clear, compelling subject line (can include {{LEAD_NAME}} or {{COMPANY_NAME}})
+
+2. CONTENT PROMPT: Write a detailed prompt that describes what the email should say. This prompt will be used by AI during email automation to generate personalized content for each lead. Include:
+   - Main message and value proposition
+   - Key points to mention based on the stage (${stageInfo.value})
+   - Tone and style (professional, friendly, urgent, etc.)
+   - Call-to-action appropriate for this follow-up stage
+   - Instructions to reference {{COMPANY_REVIEW}} if available to show research
+   - Any urgency or scarcity elements if appropriate for later stages
+   Example: "Write a ${stageInfo.label} email. Start by acknowledging previous contact. Highlight our ${companySettings.service} and how it helps businesses in {{TARGET_INDUSTRY}}. If company reviews are available, mention them. Include a clear call-to-action to schedule a call. Keep it ${stageInfo.value.includes('three') || stageInfo.value.includes('four') ? 'direct and value-focused' : stageInfo.value.includes('six') || stageInfo.value.includes('seven') ? 'final and helpful' : 'professional and friendly'}."
+
+3. HTML DESIGN: A complete HTML email template structure with placeholders. Use modern email-safe HTML with inline styles. Include:
+   - Professional layout with proper spacing
+   - Sections for: {{GENERATED_CONTENT}}, {{SIGNATURE}}, {{MEDIA_LINKS}}
+   - Color scheme that matches professional B2B emails
+   - Mobile-responsive design
+   Example structure:
+   <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; background: #f5f5f5; padding: 20px;">
+     <div style="background: white; padding: 30px; border-radius: 8px;">
+       <div style="margin-bottom: 20px;">
+         {{GENERATED_CONTENT}}
+       </div>
+       <div style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #e0e0e0;">
+         {{MEDIA_LINKS}}
+       </div>
+       <div style="margin-top: 20px;">
+         {{SIGNATURE}}
+       </div>
+     </div>
+   </div>
+
+4. EMAIL SIGNATURE: Professional signature with HTML formatting and placeholders:
+   <p style="margin: 0;">Best regards,<br>
+   <strong>{{SENDER_NAME}}</strong><br>
+   {{SENDER_EMAIL}}<br>
+   <a href="{{WEBSITE_URL}}" style="color: #0066cc;">{{WEBSITE_URL}}</a></p>
+
+Return as JSON:
+{
+  "subject": "email subject here with optional {{LEAD_NAME}}",
+  "contentPrompt": "detailed prompt for AI to generate content for this specific stage",
+  "htmlDesign": "complete HTML template with {{GENERATED_CONTENT}}, {{SIGNATURE}}, {{MEDIA_LINKS}} placeholders",
+  "signature": "email signature with HTML formatting and placeholders"
+}`;
+
+          const response = await fetch('/api/generate-email-template', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              prompt,
+              stage: stageInfo.value,
+              companySettings
+            }),
+          });
+
+          const data = await response.json();
+
+          if (data.success) {
+            const generated = data.template;
+            
+            // Get timing for this stage
+            const stageTiming = companySettings.emailTimings?.find(t => t.stage === stageInfo.value) || stageInfo.defaultTiming;
+
+            // Prepare template data with modular components
+            const templateData = {
+              stage: stageInfo.value,
+              subject: generated.subject || `Follow-up: ${stageInfo.label}`,
+              contentPrompt: generated.contentPrompt || `Write a professional ${stageInfo.label} email. Mention our ${companySettings.service} and include a call-to-action.`,
+              htmlDesign: generated.htmlDesign || `<div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">{{GENERATED_CONTENT}}{{MEDIA_LINKS}}{{SIGNATURE}}</div>`,
+              emailSignature: generated.signature || `<p>Best regards,<br>{{SENDER_NAME}}<br>{{SENDER_EMAIL}}<br>{{WEBSITE_URL}}</p>`,
+              mediaLinks: '',
+              isActive: true,
+              variables: extractVariables((generated.contentPrompt || '') + (generated.signature || '') + (generated.htmlDesign || '')),
+              timing: stageTiming,
+              userId
+            };
+
+            // Save to database
+            const saveResponse = await fetch('/api/email-templates', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(templateData),
+            });
+
+            const saveData = await saveResponse.json();
+
+            if (saveData.success) {
+              successCount++;
+              console.log(`✅ Generated and saved template for ${stageInfo.label}`);
+            } else {
+              failCount++;
+              console.error(`❌ Failed to save template for ${stageInfo.label}:`, saveData.error);
+            }
+          } else {
+            failCount++;
+            console.error(`❌ Failed to generate template for ${stageInfo.label}:`, data.error);
+          }
+
+          // Small delay between API calls to avoid rate limiting
+          await new Promise(resolve => setTimeout(resolve, 1000));
+
+        } catch (error) {
+          failCount++;
+          console.error(`❌ Error generating template for ${stageInfo.label}:`, error);
+        }
+      }
+
+      // Show final result
+      if (successCount === allStages.length) {
+        toast.success(`🎉 Successfully generated all ${successCount} email templates!`);
+      } else if (successCount > 0) {
+        toast.warning(`⚠️ Generated ${successCount} templates, ${failCount} failed`);
+      } else {
+        toast.error(`❌ Failed to generate templates`);
+      }
+
+      // Reload templates to show the new ones
+      await loadTemplates();
+      
     } catch (error) {
-      console.error('Error generating template:', error);
-      toast.error(t('failedToGenerateTemplateError').replace('{error}', (error as Error).message));
+      console.error('Error in quick generate:', error);
+      toast.error("Failed to generate templates: " + (error as Error).message);
     } finally {
       setGenerating(false);
-    }
-  };
-
-  // Generate template with custom AI prompt
-  const generateWithCustomAI = async () => {
-    try {
-      setGeneratingCustom(true);
-      
-      // Validate inputs
-      if (!aiPrompt.trim()) {
-        toast.error(t('enterCustomPrompt'));
-        return;
-      }
-
-      if (!companySettings.companyName.trim() || !companySettings.service.trim()) {
-        toast.error(t('fillCompanyNameAndService'));
-        return;
-      }
-      
-      const stageInfo = PIPELINE_STAGES(t).find(s => s.value === activeTab);
-      
-      const enhancedPrompt = `${aiPrompt}
-
-      Company Details:
-      - Company: ${companySettings.companyName}
-      - Service: ${companySettings.service}
-      - Industry: ${companySettings.industry}
-      
-      Email Context: This is for ${stageInfo?.label} - ${stageInfo?.description}
-      
-      CRITICAL EMAIL STRUCTURE TO FOLLOW:
-      Use this one-paragraph professional business email structure:
-      1. Subject: Clear and specific topic (short and direct)
-      2. Greeting: Dear [Name]
-      3. Opening Line: Polite introduction or context
-      4. Main Message: State purpose clearly with key information that shows value
-      5. Call to Action: What you'd like the recipient to do next
-      6. Closing: Short, polite ending line
-      7. Signature: Full name, position, company, contact info
-      
-      IMPORTANT REQUIREMENTS:
-      - MUST include these variables: {{LEAD_NAME}}, {{COMPANY_NAME}}, {{COMPANY_REVIEW}}, {{SENDER_NAME}}, {{SENDER_EMAIL}}, {{COMPANY_SERVICE}}, {{TARGET_INDUSTRY}}, {{WEBSITE_URL}}
-      - Follow the one-paragraph professional structure above
-      - If {{COMPANY_REVIEW}} data is available, naturally reference their reviews/ratings to show you did research
-      - HTML formatted with inline styles for email compatibility
-      - Mobile-responsive design
-      - Professional appearance
-      - Clear call-to-action
-      
-      Return JSON format with: subject, htmlContent, textContent`;
-
-      const response = await fetch('/api/generate-custom-email-template', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          prompt: enhancedPrompt,
-          stage: activeTab,
-          companySettings,
-          userPrompt: aiPrompt
-        }),
-      });
-
-      const data = await response.json();
-
-      if (data.success) {
-        setCurrentTemplate(prev => ({
-          ...prev,
-          subject: data.template.subject,
-          htmlContent: data.template.htmlContent,
-          textContent: data.template.textContent
-        }));
-        toast.success(t('templateGeneratedSuccess'));
-        setShowAIModal(false);
-        setAiPrompt("");
-      } else {
-        toast.error(data.error || t('failedToGenerateTemplate'));
-      }
-    } catch (error) {
-      console.error('Error generating custom template:', error);
-      toast.error(t('failedToGenerateTemplateError').replace('{error}', (error as Error).message));
-    } finally {
-      setGeneratingCustom(false);
     }
   };
 
@@ -1625,30 +1558,30 @@ Return ONLY the HTML content (no JSON, just the HTML body content).`;
                 {t('emailTemplates')}
               </CardTitle>
               <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 px-3 py-1 bg-blue-100 rounded-md mr-2">
+                  <Sparkles className="h-4 w-4 text-blue-600" />
+                  <span className="text-xs text-blue-700 font-medium">
+                    AI generates content during email automation
+                  </span>
+                </div>
                 <Button 
-                  onClick={() => setShowPreview(!showPreview)}
-                  variant="outline"
-                  size="sm"
-                >
-                  <Eye className="h-4 w-4 mr-2" />
-                  {showPreview ? t('hidePreview') : t('showPreview')}
-                </Button>
-                <Button 
-                  onClick={generateWithAI}
+                  onClick={quickGenerateAndSave}
                   disabled={generating}
-                  variant="outline"
+                  variant="default"
                   size="sm"
+                  className="bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700"
                 >
-                  <Wand2 className="h-4 w-4 mr-2" />
-                  {generating ? t('generating') : t('quickGenerate')}
-                </Button>
-                <Button 
-                  onClick={() => setShowAIModal(true)}
-                  disabled={generating || generatingCustom}
-                  size="sm"
-                >
-                  <Sparkles className="h-4 w-4 mr-2" />
-                  {t('customAI')}
+                  {generating ? (
+                    <>
+                      <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                      Generating All 7 Templates...
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles className="h-4 w-4 mr-2" />
+                      Quick Generate All 7 Templates
+                    </>
+                  )}
                 </Button>
               </div>
             </div>
@@ -1719,127 +1652,77 @@ Return ONLY the HTML content (no JSON, just the HTML body content).`;
                     />
                   </div>
                   
-                  {!showPreview ? (
-                    <div className="space-y-4">
-                      {/* Content Prompt - AI will generate */}
-                      <div className="space-y-2">
-                        <Label htmlFor="content-prompt" className="flex items-center gap-2">
-                          <Sparkles className="h-4 w-4 text-blue-600" />
-                          Content Prompt (AI generates from this)
-                          <span className="text-red-500">*</span>
-                        </Label>
-                        <Textarea 
-                          id="content-prompt"
-                          value={contentPrompt}
-                          onChange={(e) => setContentPrompt(e.target.value)}
-                          className="min-h-[100px]"
-                          placeholder="Describe what you want the email to say. Example: 'Write about how we can help them improve their lead generation using AI. Mention their excellent reviews.'"
-                        />
-                        <Button 
-                          onClick={generateContentFromPrompt}
-                          disabled={generatingContent || !contentPrompt.trim()}
-                          size="sm"
-                          className="w-full"
-                        >
-                          <Wand2 className="h-4 w-4 mr-2" />
-                          {generatingContent ? 'Generating Content...' : 'Generate Content from Prompt'}
-                        </Button>
+                  <div className="space-y-4">
+                    {/* Content Prompt - AI will generate during email automation */}
+                    <div className="space-y-2">
+                      <Label htmlFor="content-prompt" className="flex items-center gap-2">
+                        <Sparkles className="h-4 w-4 text-blue-600" />
+                        Content Prompt (AI generates during email automation)
+                        <span className="text-red-500">*</span>
+                      </Label>
+                      <div className="mb-2 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                        <p className="text-xs text-blue-700">
+                          <strong>How it works:</strong> This prompt will be used by AI to generate personalized content for each lead when the email automation runs. The AI will combine your prompt with lead data (name, company, reviews, etc.) to create unique content.
+                        </p>
                       </div>
-
-                      {/* Generated Content Preview */}
-                      {generatedContent && (
-                        <div className="space-y-2">
-                          <Label className="flex items-center gap-2">
-                            <CheckCircle className="h-4 w-4 text-green-600" />
-                            Generated Content (AI Result)
-                          </Label>
-                          <div 
-                            className="border rounded-lg p-4 bg-green-50 max-h-[200px] overflow-auto"
-                            dangerouslySetInnerHTML={{ __html: generatedContent }}
-                          />
-                        </div>
-                      )}
-
-                      {/* Signature - Manual */}
-                      <div className="space-y-2">
-                        <Label htmlFor="email-signature">
-                          Signature (Manual - No AI)
-                        </Label>
-                        <Textarea 
-                          id="email-signature"
-                          value={emailSignature}
-                          onChange={(e) => setEmailSignature(e.target.value)}
-                          className="min-h-[100px] font-mono text-sm"
-                          placeholder={`Best regards,<br>\n{​{SENDER_NAME}​}<br>\n{​{SENDER_EMAIL}​}<br>\n{​{WEBSITE_URL}​}`}
-                        />
-                      </div>
-
-                      {/* Media Links */}
-                      <div className="space-y-2">
-                        <Label htmlFor="media-links">
-                          Media Content (Images, Videos - Optional)
-                        </Label>
-                        <Textarea 
-                          id="media-links"
-                          value={mediaLinks}
-                          onChange={(e) => setMediaLinks(e.target.value)}
-                          className="min-h-[80px] font-mono text-sm"
-                          placeholder='<img src="https://example.com/image.jpg" style="max-width: 100%;" />\n<a href="https://youtube.com/video">Watch Video</a>'
-                        />
-                      </div>
-
-                      {/* HTML Design - Optional */}
-                      <div className="space-y-2">
-                        <Label htmlFor="html-design">
-                          Custom HTML Design (Optional - Advanced)
-                        </Label>
-                        <Textarea 
-                          id="html-design"
-                          value={htmlDesign}
-                          onChange={(e) => setHtmlDesign(e.target.value)}
-                          className="min-h-[150px] font-mono text-xs"
-                          placeholder="Leave empty to use default design, or paste custom HTML wrapper here..."
-                        />
+                      <Textarea 
+                        id="content-prompt"
+                        value={contentPrompt}
+                        onChange={(e) => setContentPrompt(e.target.value)}
+                        className="min-h-[120px]"
+                        placeholder="Example: 'Write about how we can help them improve their lead generation using AI. Reference their company reviews to show we did research. Mention our proven track record. Keep it friendly but professional. Include a call-to-action to schedule a call.'"
+                      />
+                      <div className="text-xs text-gray-600">
+                        💡 <strong>Tip:</strong> Be specific about tone, key points to mention, and what action you want the lead to take. The AI will personalize this for each recipient.
                       </div>
                     </div>
-                  ) : (
-                    <div className="space-y-4">
-                      <div className="space-y-2">
-                        <Label>{t('emailPreview')}</Label>
-                        <div 
-                          className="border rounded-lg p-4 min-h-[400px] overflow-auto bg-white"
-                          dangerouslySetInnerHTML={{ 
-                            __html: getPreviewContent(assembleFinalTemplate().htmlContent) 
-                          }}
-                        />
-                      </div>
-                      
-                      <div className="space-y-2">
-                        <Label>{t('plainTextPreview')}</Label>
-                        <div className="border rounded-lg p-4 bg-muted text-sm whitespace-pre-wrap font-mono">
-                          {getPreviewContent(assembleFinalTemplate().textContent)}
-                        </div>
-                      </div>
+
+                    {/* Signature - Manual */}
+                    <div className="space-y-2">
+                      <Label htmlFor="email-signature">
+                        Signature (Manual - No AI)
+                      </Label>
+                      <Textarea 
+                        id="email-signature"
+                        value={emailSignature}
+                        onChange={(e) => setEmailSignature(e.target.value)}
+                        className="min-h-[100px] font-mono text-sm"
+                        placeholder={`Best regards,<br>\n{​{SENDER_NAME}​}<br>\n{​{SENDER_EMAIL}​}<br>\n{​{WEBSITE_URL}​}`}
+                      />
                     </div>
-                  )}
+
+                    {/* Media Links */}
+                    <div className="space-y-2">
+                      <Label htmlFor="media-links">
+                        Media Content (Images, Videos - Optional)
+                      </Label>
+                      <Textarea 
+                        id="media-links"
+                        value={mediaLinks}
+                        onChange={(e) => setMediaLinks(e.target.value)}
+                        className="min-h-[80px] font-mono text-sm"
+                        placeholder='<img src="https://example.com/image.jpg" style="max-width: 100%;" />\n<a href="https://youtube.com/video">Watch Video</a>'
+                      />
+                    </div>
+
+                    {/* HTML Design - Optional */}
+                    <div className="space-y-2">
+                      <Label htmlFor="html-design">
+                        Custom HTML Design (Optional - Advanced)
+                      </Label>
+                      <Textarea 
+                        id="html-design"
+                        value={htmlDesign}
+                        onChange={(e) => setHtmlDesign(e.target.value)}
+                        className="min-h-[150px] font-mono text-xs"
+                        placeholder="Leave empty to use default design, or paste custom HTML wrapper here..."
+                      />
+                    </div>
+                  </div>
                   
                   <div className="flex items-center justify-between pt-4 border-t">
                     <div className="text-sm text-muted-foreground">
                       {stage.description}
-                    </div>
-                    <div className="flex gap-2">
-                      <Button 
-                        variant="outline" 
-                        size="sm"
-                        onClick={() => {
-                          const { htmlContent } = assembleFinalTemplate();
-                          navigator.clipboard.writeText(htmlContent);
-                          toast.success(t('htmlCopiedToClipboard'));
-                        }}
-                      >
-                        <Copy className="h-3 w-3 mr-2" />
-                        {t('copyHTML')}
-                      </Button>
                     </div>
                   </div>
                 </TabsContent>
@@ -1895,85 +1778,6 @@ Return ONLY the HTML content (no JSON, just the HTML body content).`;
           </div>
         </CardContent>
       </Card>
-
-            {/* AI Generation Modal */}
-      <Dialog open={showAIModal} onOpenChange={setShowAIModal}>
-        <DialogContent className="sm:max-w-[600px]">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <Sparkles className="h-5 w-5" />
-              {t('customAIEmailGenerator')}
-            </DialogTitle>
-            <DialogDescription>
-              {t('customAIDescription')}
-            </DialogDescription>
-          </DialogHeader>
-          
-          <div className="space-y-4">
-            <div>
-              <Label htmlFor="custom-prompt" className="text-sm font-medium">
-                {t('describeEmailDesign')}
-              </Label>
-              <Textarea
-                id="custom-prompt"
-                value={aiPrompt}
-                onChange={(e) => setAiPrompt(e.target.value)}
-                placeholder={t('describeEmailDesignPlaceholder')}
-                className="mt-2 min-h-[120px]"
-                rows={5}
-              />
-            </div>
-            
-                         <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-               <h4 className="text-sm font-medium text-blue-900 mb-2">
-                 {t('availablePlaceholders')}
-               </h4>
-               <div className="grid grid-cols-2 gap-2 text-xs text-blue-800">
-                 <div><code>{`{{LEAD_NAME}}`}</code> - {t('leadNameDesc')}</div>
-                 <div><code>{`{{COMPANY_NAME}}`}</code> - {t('companyNameDesc')}</div>
-                 <div><code>{`{{COMPANY_REVIEW}}`}</code> - Company reviews/ratings</div>
-                 <div><code>{`{{SENDER_NAME}}`}</code> - {t('senderNameDescModal')}</div>
-                 <div><code>{`{{SENDER_EMAIL}}`}</code> - {t('senderEmailDescModal')}</div>
-                 <div><code>{`{{COMPANY_SERVICE}}`}</code> - {t('companyServiceDesc')}</div>
-                 <div><code>{`{{TARGET_INDUSTRY}}`}</code> - {t('targetIndustryDescModal')}</div>
-                 <div><code>{`{{WEBSITE_URL}}`}</code> - {t('websiteURLDescModal')}</div>
-               </div>
-               <p className="text-xs text-blue-700 mt-2">
-                 {t('aiWillIncludePlaceholders')}
-               </p>
-             </div>
-          </div>
-
-          <DialogFooter className="flex gap-2">
-            <Button 
-              variant="outline" 
-              onClick={() => {
-                setShowAIModal(false);
-                setAiPrompt("");
-              }}
-              disabled={generatingCustom}
-            >
-              {t('cancel')}
-            </Button>
-            <Button 
-              onClick={generateWithCustomAI}
-              disabled={generatingCustom || !aiPrompt.trim()}
-            >
-              {generatingCustom ? (
-                <>
-                  <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
-                  {t('generating')}
-                </>
-              ) : (
-                <>
-                  <Sparkles className="h-4 w-4 mr-2" />
-                  {t('generateTemplate')}
-                </>
-              )}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }

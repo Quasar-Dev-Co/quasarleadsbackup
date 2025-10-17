@@ -41,6 +41,10 @@ export async function GET(request: NextRequest) {
       id: template._id.toString(),
       stage: template.stage,
       subject: template.subject,
+      contentPrompt: template.contentPrompt || '',
+      htmlDesign: template.htmlDesign || '',
+      emailSignature: template.emailSignature || '',
+      mediaLinks: template.mediaLinks || '',
       htmlContent: template.htmlContent,
       textContent: template.textContent,
       isActive: template.isActive,
@@ -72,7 +76,20 @@ export async function POST(request: NextRequest) {
     await dbConnect();
     
     const body = await request.json();
-    const { stage, subject, htmlContent, textContent, isActive, variables, timing, userId } = body;
+    const { 
+      stage, 
+      subject, 
+      contentPrompt, 
+      htmlDesign, 
+      emailSignature, 
+      mediaLinks,
+      htmlContent, 
+      textContent, 
+      isActive, 
+      variables, 
+      timing, 
+      userId 
+    } = body;
     
     // Validate required fields
     if (!userId) {
@@ -82,18 +99,29 @@ export async function POST(request: NextRequest) {
       }, { status: 400 });
     }
     
-    // Validate required fields
-    if (!stage || !subject || !htmlContent) {
+    // Validate required fields - now we need either contentPrompt (new) or htmlContent (legacy)
+    if (!stage || !subject) {
       return NextResponse.json({
         success: false,
-        error: 'Stage, subject, and HTML content are required'
+        error: 'Stage and subject are required'
+      }, { status: 400 });
+    }
+    
+    if (!contentPrompt && !htmlContent) {
+      return NextResponse.json({
+        success: false,
+        error: 'Either contentPrompt (new system) or htmlContent (legacy) is required'
       }, { status: 400 });
     }
     
     const templateData = {
       stage,
       subject,
-      htmlContent,
+      contentPrompt: contentPrompt || '',
+      htmlDesign: htmlDesign || '',
+      emailSignature: emailSignature || '',
+      mediaLinks: mediaLinks || '',
+      htmlContent: htmlContent || '', // Keep for backwards compatibility
       textContent: textContent || '',
       isActive: isActive !== undefined ? isActive : true,
       variables: variables || [],

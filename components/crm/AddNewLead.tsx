@@ -58,6 +58,8 @@ export interface NewLead {
   tags: string[];
   googleAds: boolean;
   organicRanking?: number;
+  rating?: number;
+  reviews?: number;
   authInformation?: {
     company_name?: string;
     company_email?: string;
@@ -117,6 +119,8 @@ const AddNewLead = ({ onClose, onSuccess }: AddNewLeadProps) => {
     tags: [],
     googleAds: false,
     organicRanking: undefined,
+    rating: undefined,
+    reviews: undefined,
     authInformation: {
       company_name: "",
       company_email: "",
@@ -411,9 +415,9 @@ const AddNewLead = ({ onClose, onSuccess }: AddNewLeadProps) => {
               </div>
             </div>
 
-            {/* Google Ads Intelligence */}
+            {/* Google Ads Intelligence & Company Reviews */}
             <div className="space-y-4">
-              <h3 className="text-lg font-medium">Google Ads Intelligence</h3>
+              <h3 className="text-lg font-medium">Google Ads Intelligence & Company Reviews</h3>
               
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="flex items-center space-x-2">
@@ -446,6 +450,39 @@ const AddNewLead = ({ onClose, onSuccess }: AddNewLeadProps) => {
                     />
                   </div>
                 )}
+                
+                <div className="space-y-2">
+                  <Label htmlFor="rating" className="text-sm font-medium flex items-center gap-2">
+                    <Star className="w-4 h-4 text-yellow-500 fill-yellow-500" />
+                    Company Rating
+                  </Label>
+                  <Input
+                    id="rating"
+                    name="rating"
+                    type="number"
+                    value={newLead.rating || ''}
+                    onChange={handleInputChange}
+                    placeholder="e.g., 4.5"
+                    min="0"
+                    max="5"
+                    step="0.1"
+                  />
+                  <p className="text-xs text-gray-500">Rating out of 5 stars (e.g., 4.5)</p>
+                </div>
+                
+                <div className="space-y-2">
+                  <Label htmlFor="reviews" className="text-sm font-medium">Number of Reviews</Label>
+                  <Input
+                    id="reviews"
+                    name="reviews"
+                    type="number"
+                    value={newLead.reviews || ''}
+                    onChange={handleInputChange}
+                    placeholder="e.g., 127"
+                    min="0"
+                  />
+                  <p className="text-xs text-gray-500">Total review count (e.g., 127 reviews)</p>
+                </div>
               </div>
             </div>
 

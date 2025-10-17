@@ -3,7 +3,9 @@ import dbConnect from '@/lib/mongodb';
 import { Lead } from '@/models/leadSchema';
 import EmailTemplate from '@/models/emailTemplateSchema';
 import User from '@/models/userSchema';
+import CompanySettings from '@/models/companySettingsSchema';
 import nodemailer from 'nodemailer';
+import OpenAI from 'openai';
 
 // Email sequence stages
 const EMAIL_STAGES = [
@@ -63,14 +65,30 @@ export async function POST(request: NextRequest) {
       nextStage = EMAIL_STAGES[currentStageIndex + 1];
     }
     
-    // Get email template and company settings using mongoose models
-    const template = await EmailTemplate.findOne({ stage: nextStage, isActive: true });
+    // Get the userId from the lead for user-specific templates and settings
+    const userId = lead.userId || lead.assignedTo || lead.leadsCreatedBy;
     
-    // Get company settings from raw collection (keeping this for now as we don't have a mongoose model for it)
-    const mongooseConnection = await dbConnect();
-    const db = mongooseConnection.connection.db;
-    const settingsCollection = db.collection('companySettings');
-    const companySettings = await settingsCollection.findOne({ type: 'default' });
+    // Get email template (prefer user-specific, fallback to global)
+    let template = userId 
+      ? await EmailTemplate.findOne({ stage: nextStage, isActive: true, userId }).lean()
+      : null;
+    
+    if (!template) {
+      template = await EmailTemplate.findOne({ 
+        stage: nextStage, 
+        isActive: true, 
+        $or: [{ userId: { $exists: false } }, { userId: '' }, { userId: null }] 
+      }).lean();
+    }
+    
+    // Get company settings (prefer user-specific, fallback to default)
+    let companySettings = userId 
+      ? await CompanySettings.findOne({ userId }).lean()
+      : null;
+    
+    if (!companySettings) {
+      companySettings = await CompanySettings.findOne({ type: 'default' }).lean();
+    }
     
     if (!template) {
       return NextResponse.json({
@@ -86,11 +104,8 @@ export async function POST(request: NextRequest) {
       }, { status: 404 });
     }
     
-    // Process email template with variables
-    const emailContent = processEmailTemplate(template, lead, companySettings);
-    
-    // Get the userId from the lead if available
-    const userId = lead.userId || lead.assignedTo;
+    // Process email template with variables (supports both modular and legacy)
+    const emailContent = await processEmailTemplate(template, lead, companySettings, nextStage);
     
     // Send email immediately using user's SMTP credentials if available
     const emailResult = await sendEmail(lead.email, emailContent.subject, emailContent.htmlContent, emailContent.textContent, userId);
@@ -184,36 +199,251 @@ export async function POST(request: NextRequest) {
   }
 }
 
-// Process email template with variable substitution
-function processEmailTemplate(template: any, lead: any, companySettings: any) {
-  const variables = {
+// Helper function to get author/owner name
+function getAuthorName(lead: any): string {
+  if (lead.companyOwner) return lead.companyOwner;
+  if (lead.author && lead.author !== 'Unknown Author') return lead.author;
+  return lead.name || 'there';
+}
+
+// Replace template variables with actual values
+function replaceEmailVariables(content: string, lead: any, companySettings: any): string {
+  const companyReview = lead?.rating && lead?.reviews 
+    ? `${lead.rating} stars with ${lead.reviews} reviews`
+    : lead?.rating 
+    ? `Rated ${lead.rating} stars`
+    : 'excellent reputation';
+
+  const variables: Record<string, string> = {
     '{{LEAD_NAME}}': lead.name || 'there',
     '{{NAME}}': lead.name || 'there',
+    '{{OWNER_NAME}}': getAuthorName(lead),
     '{{COMPANY_NAME}}': lead.company || 'your company',
+    '{{COMPANY_REVIEW}}': companyReview,
     '{{LOCATION}}': lead.location || 'your area',
-    '{{SENDER_NAME}}': companySettings.senderName || 'QuasarSEO Team',
-    '{{SENDER_EMAIL}}': companySettings.senderEmail || 'info@quasarseo.nl',
-    '{{COMPANY_SERVICE}}': companySettings.service || 'AI-powered lead generation',
-    '{{TARGET_INDUSTRY}}': companySettings.industry || 'Technology',
-    '{{WEBSITE_URL}}': companySettings.websiteUrl || 'https://quasarleads.com'
+    '{{SENDER_NAME}}': companySettings?.senderName || 'QuasarSEO Team',
+    '{{SENDER_EMAIL}}': companySettings?.senderEmail || 'info@quasarseo.nl',
+    '{{COMPANY_SERVICE}}': companySettings?.service || 'AI-powered lead generation',
+    '{{TARGET_INDUSTRY}}': companySettings?.industry || 'Technology',
+    '{{WEBSITE_URL}}': companySettings?.websiteUrl || 'https://quasarleads.com'
   };
-  
-  let processedSubject = template.subject;
-  let processedHtmlContent = template.htmlContent;
-  let processedTextContent = template.textContent || '';
-  
-  // Replace variables in all content
+
+  let processedContent = content;
   Object.entries(variables).forEach(([key, value]) => {
     const regex = new RegExp(key.replace(/[{}]/g, '\\$&'), 'g');
-    processedSubject = processedSubject.replace(regex, value);
-    processedHtmlContent = processedHtmlContent.replace(regex, value);
-    processedTextContent = processedTextContent.replace(regex, value);
+    processedContent = processedContent.replace(regex, value || '');
   });
+
+  return processedContent;
+}
+
+// Generate email content from prompt using OpenAI
+async function generateEmailContentFromPrompt(
+  prompt: string,
+  lead: any,
+  companySettings: any,
+  stage: string,
+  htmlDesign?: string
+): Promise<string> {
+  try {
+    const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+    
+    const companyReview = lead?.rating && lead?.reviews 
+      ? `${lead.rating} stars with ${lead.reviews} reviews`
+      : lead?.rating 
+      ? `Rated ${lead.rating} stars`
+      : '';
+    
+    const leadData = {
+      leadName: lead.name || '',
+      ownerName: getAuthorName(lead),
+      companyName: lead.company || '',
+      companyReview: companyReview,
+      location: lead.location || '',
+      industry: companySettings?.industry || '',
+      service: companySettings?.service || '',
+      senderName: companySettings?.senderName || 'Team',
+      websiteUrl: companySettings?.websiteUrl || ''
+    };
+    
+    let aiPrompt = '';
+    
+    if (htmlDesign && htmlDesign.trim()) {
+      aiPrompt = `You are generating personalized email content for a sales/marketing email.
+
+LEAD INFORMATION:
+- Lead Name: ${leadData.leadName}
+- Company Owner: ${leadData.ownerName}
+- Company Name: ${leadData.companyName}
+- Company Reviews: ${leadData.companyReview || 'Not available'}
+- Location: ${leadData.location}
+- Target Industry: ${leadData.industry}
+
+YOUR COMPANY:
+- Service: ${leadData.service}
+- Sender Name: ${leadData.senderName}
+- Website: ${leadData.websiteUrl}
+
+EMAIL STAGE: ${stage}
+
+USER'S CONTENT PROMPT:
+${prompt}
+
+CUSTOM HTML DESIGN TEMPLATE:
+${htmlDesign}
+
+INSTRUCTIONS:
+1. ANALYZE the HTML design template structure carefully
+2. IDENTIFY the styling patterns (classes, inline styles, HTML elements used)
+3. Generate content that MATCHES the design's HTML structure and styling
+4. Use the SAME HTML elements, classes, and style attributes as the design
+5. If the design uses specific div structures, buttons, or formatting, replicate that style
+6. Naturally incorporate the lead's data where relevant
+7. If company reviews are available, reference them to show research
+8. Keep it concise and focused (2-3 short paragraphs max)
+9. Include a clear call-to-action
+10. Use these placeholders where appropriate:
+   - {{LEAD_NAME}} for the lead's name
+   - {{OWNER_NAME}} for the company owner
+   - {{COMPANY_NAME}} for the company
+   - {{COMPANY_REVIEW}} for reviews
+   - {{SENDER_NAME}} for your name
+   - {{COMPANY_SERVICE}} for your service
+   - {{TARGET_INDUSTRY}} for industry
+   - {{WEBSITE_URL}} for your website
+
+11. Make it feel personal and human, not templated
+12. Return ONLY the main email body content (NO subject line, NO signature, NO {{GENERATED_CONTENT}} placeholder)
+13. The content should be ready to replace {{GENERATED_CONTENT}} in the design template
+
+Generate the email body content now with HTML formatting that matches the design:`;
+    } else {
+      aiPrompt = `You are generating personalized email content for a sales/marketing email.
+
+LEAD INFORMATION:
+- Lead Name: ${leadData.leadName}
+- Company Owner: ${leadData.ownerName}
+- Company Name: ${leadData.companyName}
+- Company Reviews: ${leadData.companyReview || 'Not available'}
+- Location: ${leadData.location}
+- Target Industry: ${leadData.industry}
+
+YOUR COMPANY:
+- Service: ${leadData.service}
+- Sender Name: ${leadData.senderName}
+- Website: ${leadData.websiteUrl}
+
+EMAIL STAGE: ${stage}
+
+USER'S CONTENT PROMPT:
+${prompt}
+
+INSTRUCTIONS:
+1. Generate ONLY the main email body content (NO subject line, NO signature)
+2. Use professional, conversational tone
+3. Naturally incorporate the lead's data where relevant
+4. If company reviews are available, reference them to show research
+5. Keep it concise and focused (2-3 short paragraphs max)
+6. Include a clear call-to-action
+7. Use these placeholders where appropriate:
+   - {{LEAD_NAME}} for the lead's name
+   - {{OWNER_NAME}} for the company owner
+   - {{COMPANY_NAME}} for the company
+   - {{COMPANY_REVIEW}} for reviews
+   - {{SENDER_NAME}} for your name
+   - {{COMPANY_SERVICE}} for your service
+   - {{TARGET_INDUSTRY}} for industry
+   - {{WEBSITE_URL}} for your website
+
+8. Return HTML formatted content with proper paragraph tags
+9. Make it feel personal and human, not templated
+
+Generate the email body content now:`;
+    }
+
+    const completion = await openai.chat.completions.create({
+      model: 'gpt-4o-mini',
+      messages: [
+        { role: 'system', content: 'You are an expert email copywriter specialized in B2B sales and marketing emails.' },
+        { role: 'user', content: aiPrompt }
+      ],
+      temperature: 0.7,
+      max_tokens: 500
+    });
+
+    const generatedContent = completion.choices[0]?.message?.content || '';
+    console.log(`✨ Generated email content from prompt for ${lead.email}`);
+    
+    return generatedContent;
+    
+  } catch (error) {
+    console.error('❌ Error generating content from prompt:', error);
+    return `<p>Hello {{LEAD_NAME}},</p><p>I hope this email finds you well.</p>`;
+  }
+}
+
+// Process email template with variable substitution (supports modular and legacy)
+async function processEmailTemplate(template: any, lead: any, companySettings: any, stage: string) {
+  let finalHTML = '';
+  let finalText = '';
+  
+  // Check if template has new modular structure (contentPrompt)
+  if (template.contentPrompt && template.contentPrompt.trim()) {
+    console.log('📝 Using NEW modular template system with AI generation');
+    
+    // Generate content from prompt using AI + lead data + HTML design
+    const generatedContent = await generateEmailContentFromPrompt(
+      template.contentPrompt,
+      lead,
+      companySettings,
+      stage,
+      template.htmlDesign
+    );
+    
+    // Replace variables in generated content
+    const processedContent = replaceEmailVariables(generatedContent, lead, companySettings);
+    
+    // Replace variables in other components
+    const processedSignature = template.emailSignature 
+      ? replaceEmailVariables(template.emailSignature, lead, companySettings)
+      : '';
+    const processedMediaLinks = template.mediaLinks 
+      ? replaceEmailVariables(template.mediaLinks, lead, companySettings)
+      : '';
+    
+    // Use custom HTML design or default
+    if (template.htmlDesign && template.htmlDesign.trim()) {
+      finalHTML = template.htmlDesign
+        .replace('{{GENERATED_CONTENT}}', processedContent)
+        .replace('{{SIGNATURE}}', processedSignature)
+        .replace('{{MEDIA_LINKS}}', processedMediaLinks);
+    } else {
+      finalHTML = `
+        <div style="font-family: Arial, sans-serif; max-width: 650px; margin: 0 auto; background: #ffffff;">
+          <div style="padding: 40px 30px; background: white;">
+            ${processedContent}
+            ${processedMediaLinks ? `<div style="margin: 20px 0;">${processedMediaLinks}</div>` : ''}
+            ${processedSignature ? `<div style="margin-top: 30px;">${processedSignature}</div>` : ''}
+          </div>
+        </div>
+      `;
+    }
+    
+    finalText = `${processedContent.replace(/<[^>]*>/g, '')}\n\n${processedMediaLinks ? 'Media: ' + processedMediaLinks.replace(/<[^>]*>/g, '') + '\n\n' : ''}${processedSignature.replace(/<[^>]*>/g, '')}`;
+    
+  } else {
+    // Fallback to OLD system (backwards compatibility)
+    console.log('📜 Using LEGACY template system (pre-generated HTML)');
+    finalHTML = replaceEmailVariables(template.htmlContent || '', lead, companySettings);
+    finalText = replaceEmailVariables(template.textContent || '', lead, companySettings);
+  }
+  
+  const processedSubject = replaceEmailVariables(template.subject, lead, companySettings);
   
   return {
     subject: processedSubject,
-    htmlContent: processedHtmlContent,
-    textContent: processedTextContent
+    htmlContent: finalHTML,
+    textContent: finalText
   };
 }
 
