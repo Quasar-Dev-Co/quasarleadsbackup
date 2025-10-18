@@ -126,6 +126,15 @@ export async function POST(request: NextRequest) {
       timing: timing || { delay: 7, unit: 'days', description: 'Send after 7 days' }
     };
     
+    console.log(`💾 SAVING TEMPLATE - Stage: ${stage}, userId: ${userId}`);
+    console.log(`   - Subject: ${subject ? '✓' : '✗'}`);
+    console.log(`   - Content Prompt: ${contentPrompt ? '✓' : '✗'}`);
+    console.log(`   - Email Signature: ${emailSignature ? '✓' : '✗'}`);
+    console.log(`   - Media Links: ${mediaLinks ? `✓ (${mediaLinks.length} chars)` : '✗ (EMPTY)'}`);
+    if (mediaLinks) {
+      console.log(`   - Media Content: ${mediaLinks.substring(0, 100)}...`);
+    }
+    
     // Update existing template or create new one
     // First check if a template with this stage already exists for this user
     const existingTemplate = await EmailTemplate.findOne({ stage, userId });

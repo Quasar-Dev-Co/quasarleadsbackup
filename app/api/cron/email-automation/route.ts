@@ -20,7 +20,7 @@ async function getEmailTemplateAndSettings(stage: string, userId?: string) {
     
     if (userId) {
       // Try to find user-specific template first
-      template = await EmailTemplate.findOne({ stage, isActive: true, userId }).lean();
+      template = await EmailTemplate.findOne({ stage, isActive: true, userId }).lean().exec();
       console.log(`🔍 User-specific template lookup for stage "${stage}" (userId: ${userId}): ${template ? 'FOUND' : 'NOT FOUND'}`);
     }
     
@@ -34,7 +34,7 @@ async function getEmailTemplateAndSettings(stage: string, userId?: string) {
           { userId: '' }, 
           { userId: null } 
         ] 
-      }).lean();
+      }).lean().exec();
       console.log(`🔍 Global template lookup for stage "${stage}": ${template ? 'FOUND' : 'NOT FOUND'}`);
     }
     
@@ -57,8 +57,11 @@ async function getEmailTemplateAndSettings(stage: string, userId?: string) {
       console.log(`      - Content Prompt: ${template.contentPrompt ? '✓' : '✗'}`);
       console.log(`      - Email Signature: ${template.emailSignature ? '✓' : '✗'}`);
       console.log(`      - Media Links: ${template.mediaLinks ? '✓ (HAS CONTENT)' : '✗ (EMPTY)'}`);
+      console.log(`      - Media Links Length: ${template.mediaLinks ? template.mediaLinks.length : 0} characters`);
       if (template.mediaLinks) {
-        console.log(`      - Media Content Preview: ${template.mediaLinks.substring(0, 100)}...`);
+        console.log(`      - Media Content Full: "${template.mediaLinks}"`);
+      } else {
+        console.log(`      - ⚠️ WARNING: mediaLinks field is empty or undefined!`);
       }
     }
     
@@ -307,18 +310,25 @@ async function assembleFinalEmail(template: any, lead: any, companySettings: any
     const processedContent = replaceEmailVariables(generatedContent, lead, companySettings);
     
     // Replace variables in other components
-    const processedSignature = template.emailSignature 
+    console.log(`\n🔍 BEFORE PROCESSING:`);
+    console.log(`   - template.emailSignature type: ${typeof template.emailSignature}, value: ${template.emailSignature ? 'EXISTS' : 'NULL/UNDEFINED'}`);
+    console.log(`   - template.mediaLinks type: ${typeof template.mediaLinks}, value: ${template.mediaLinks ? 'EXISTS' : 'NULL/UNDEFINED'}`);
+    console.log(`   - template.mediaLinks length: ${template.mediaLinks?.length || 0}`);
+    console.log(`   - template.mediaLinks raw: "${template.mediaLinks}"`);
+    
+    const processedSignature = (template.emailSignature && template.emailSignature.trim())
       ? replaceEmailVariables(template.emailSignature, lead, companySettings)
       : '';
-    const processedMediaLinks = template.mediaLinks 
+    const processedMediaLinks = (template.mediaLinks && template.mediaLinks.trim())
       ? replaceEmailVariables(template.mediaLinks, lead, companySettings)
       : '';
     
-    console.log(`📧 Email Assembly - Stage: ${stage}`);
+    console.log(`\n📧 Email Assembly - Stage: ${stage}`);
     console.log(`   - Content: ${processedContent ? 'Generated ✓' : 'Missing ✗'}`);
     console.log(`   - Signature: ${processedSignature ? 'Included ✓' : 'Empty'}`);
     console.log(`   - Media Links: ${processedMediaLinks ? 'Included ✓' : 'Empty'}`);
     console.log(`   - Template Media Field: "${template.mediaLinks || '(empty)'}"`);
+    console.log(`   - Processed Media Length: ${processedMediaLinks.length} chars`);
     console.log(`   - Processed Media: "${processedMediaLinks || '(empty)'}"`);
     
     // Use default professional email structure with proper media support
@@ -334,6 +344,10 @@ async function assembleFinalEmail(template: any, lead: any, companySettings: any
     
     // Generate plain text version
     finalText = `${processedContent.replace(/<[^>]*>/g, '')}\n\n${processedMediaLinks ? 'Media: ' + processedMediaLinks.replace(/<[^>]*>/g, '') + '\n\n' : ''}${processedSignature.replace(/<[^>]*>/g, '')}`;
+    
+    console.log(`\n📧 FINAL EMAIL HTML (first 500 chars):`);
+    console.log(finalHTML.substring(0, 500));
+    console.log(`\n📧 FINAL EMAIL HTML (contains iframe): ${finalHTML.includes('<iframe') ? '✅ YES' : '❌ NO'}`);
     
   } else {
     // Fallback to OLD system (backwards compatibility)
@@ -395,6 +409,14 @@ async function sendEmailWithRetry(lead: any, stage: string, retryCount: number =
       ? getAuthorName(lead)
       : (companySettings?.senderName || senderName);
 
+    // Final verification before sending
+    console.log(`\n📤 ABOUT TO SEND EMAIL:`);
+    console.log(`   - To: ${chosenTo}`);
+    console.log(`   - Subject: ${subject}`);
+    console.log(`   - HTML length: ${htmlContent.length} chars`);
+    console.log(`   - HTML contains '<iframe': ${htmlContent.includes('<iframe') ? '✅ YES' : '❌ NO'}`);
+    console.log(`   - HTML preview (first 800 chars):\n${htmlContent.substring(0, 800)}`);
+    
     const mailOptions = {
       from: {
         name: fromName,
