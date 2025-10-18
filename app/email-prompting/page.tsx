@@ -1672,7 +1672,7 @@ Return as JSON:
                           size="sm"
                           variant="outline"
                           onClick={() => {
-                            // Convert YouTube URLs to embeds
+                            // Convert YouTube URLs to clickable thumbnails (email-safe!)
                             const lines = mediaLinks.split('\n');
                             const converted = lines.map(line => {
                               const trimmed = line.trim();
@@ -1681,20 +1681,26 @@ Return as JSON:
                               const shortsMatch = trimmed.match(/(?:https?:\/\/)?(?:www\.)?(?:youtube\.com|youtu\.be)\/shorts\/([a-zA-Z0-9_-]+)/);
                               if (shortsMatch) {
                                 const videoId = shortsMatch[1];
-                                return `<iframe width="100%" height="315" src="https://www.youtube.com/embed/${videoId}" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen style="max-width: 560px; margin: 10px auto; display: block;"></iframe>`;
+                                return `<a href="https://www.youtube.com/watch?v=${videoId}" target="_blank" style="display: inline-block; margin: 10px; text-decoration: none;">
+  <img src="https://img.youtube.com/vi/${videoId}/hqdefault.jpg" alt="Watch Video" style="width: 320px; height: 180px; border-radius: 8px; border: 3px solid #FF0000;" />
+  <div style="text-align: center; margin-top: 8px; color: #FF0000; font-weight: bold; font-size: 14px;">▶ Watch on YouTube</div>
+</a>`;
                               }
                               
                               // Match regular YouTube URLs
                               const videoMatch = trimmed.match(/(?:https?:\/\/)?(?:www\.)?(?:youtube\.com\/watch\?v=|youtu\.be\/)([a-zA-Z0-9_-]+)/);
                               if (videoMatch) {
                                 const videoId = videoMatch[1];
-                                return `<iframe width="100%" height="315" src="https://www.youtube.com/embed/${videoId}" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen style="max-width: 560px; margin: 10px auto; display: block;"></iframe>`;
+                                return `<a href="https://www.youtube.com/watch?v=${videoId}" target="_blank" style="display: inline-block; margin: 10px; text-decoration: none;">
+  <img src="https://img.youtube.com/vi/${videoId}/hqdefault.jpg" alt="Watch Video" style="width: 320px; height: 180px; border-radius: 8px; border: 3px solid #FF0000;" />
+  <div style="text-align: center; margin-top: 8px; color: #FF0000; font-weight: bold; font-size: 14px;">▶ Watch on YouTube</div>
+</a>`;
                               }
                               
                               return line;
                             });
                             setMediaLinks(converted.join('\n'));
-                            toast.success('YouTube URLs converted to embedded players!');
+                            toast.success('✅ YouTube URLs converted to email-safe thumbnails!');
                           }}
                         >
                           <Wand2 className="h-3 w-3 mr-1" />
@@ -1709,7 +1715,7 @@ Return as JSON:
                         placeholder='Paste YouTube URLs (one per line):\nhttps://youtube.com/shorts/Z3xJtemmWCk\nhttps://youtube.com/shorts/iQoAPd4O_9I\n\nThen click "Convert YouTube URLs" button above'
                       />
                       <p className="text-xs text-muted-foreground">
-                        💡 Tip: Paste YouTube URLs and click "Convert YouTube URLs" to create embedded players
+                        💡 Tip: Paste YouTube URLs and click "Convert" - Creates clickable video thumbnails that work in ALL email clients (Gmail, Outlook, etc.)
                       </p>
                     </div>
                   </div>
