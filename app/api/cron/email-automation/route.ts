@@ -16,11 +16,11 @@ async function getEmailTemplateAndSettings(stage: string, userId?: string) {
     await dbConnect();
     
     // Get email template using mongoose model - PREFER user-specific template first
-    let template = null;
+    let template: any = null;
     
     if (userId) {
       // Try to find user-specific template first
-      template = await EmailTemplate.findOne({ stage, isActive: true, userId });
+      template = await EmailTemplate.findOne({ stage, isActive: true, userId }).lean();
       console.log(`🔍 User-specific template lookup for stage "${stage}" (userId: ${userId}): ${template ? 'FOUND' : 'NOT FOUND'}`);
     }
     
@@ -34,7 +34,7 @@ async function getEmailTemplateAndSettings(stage: string, userId?: string) {
           { userId: '' }, 
           { userId: null } 
         ] 
-      });
+      }).lean();
       console.log(`🔍 Global template lookup for stage "${stage}": ${template ? 'FOUND' : 'NOT FOUND'}`);
     }
     
@@ -50,6 +50,17 @@ async function getEmailTemplateAndSettings(stage: string, userId?: string) {
     }
     
     console.log(`📧 Template result for stage "${stage}" ${userId ? `(user: ${userId})` : '(global)'}: ${template ? 'FOUND' : 'NOT FOUND'}`);
+    
+    if (template) {
+      console.log(`   📋 Template Fields:`);
+      console.log(`      - Subject: ${template.subject ? '✓' : '✗'}`);
+      console.log(`      - Content Prompt: ${template.contentPrompt ? '✓' : '✗'}`);
+      console.log(`      - Email Signature: ${template.emailSignature ? '✓' : '✗'}`);
+      console.log(`      - Media Links: ${template.mediaLinks ? '✓ (HAS CONTENT)' : '✗ (EMPTY)'}`);
+      if (template.mediaLinks) {
+        console.log(`      - Media Content Preview: ${template.mediaLinks.substring(0, 100)}...`);
+      }
+    }
     
     return {
       template,
@@ -307,14 +318,16 @@ async function assembleFinalEmail(template: any, lead: any, companySettings: any
     console.log(`   - Content: ${processedContent ? 'Generated ✓' : 'Missing ✗'}`);
     console.log(`   - Signature: ${processedSignature ? 'Included ✓' : 'Empty'}`);
     console.log(`   - Media Links: ${processedMediaLinks ? 'Included ✓' : 'Empty'}`);
+    console.log(`   - Template Media Field: "${template.mediaLinks || '(empty)'}"`);
+    console.log(`   - Processed Media: "${processedMediaLinks || '(empty)'}"`);
     
     // Use default professional email structure with proper media support
     finalHTML = `
       <div style="font-family: Arial, sans-serif; max-width: 100%; margin: 0 auto; background: #ffffff;">
         <div style="padding: 20px; background: white;">
           ${processedContent}
-          ${processedMediaLinks ? `<div style="margin: 30px 0; text-align: center;">${processedMediaLinks}</div>` : ''}
-          ${processedSignature ? `<div style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #e0e0e0;">${processedSignature}</div>` : ''}
+          ${processedMediaLinks ? `<div style="margin: 40px 0; text-align: center; line-height: 0;">${processedMediaLinks}</div>` : ''}
+          ${processedSignature ? `<div style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #e0e0e0; line-height: 1.5;">${processedSignature}</div>` : ''}
         </div>
       </div>
     `;

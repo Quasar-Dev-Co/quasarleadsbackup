@@ -1663,16 +1663,54 @@ Return as JSON:
 
                     {/* Media Links */}
                     <div className="space-y-2">
-                      <Label htmlFor="media-links">
-                        Media Content (Images, Videos - Optional)
-                      </Label>
+                      <div className="flex items-center justify-between">
+                        <Label htmlFor="media-links">
+                          Media Content (Videos, Images - Optional)
+                        </Label>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          onClick={() => {
+                            // Convert YouTube URLs to embeds
+                            const lines = mediaLinks.split('\n');
+                            const converted = lines.map(line => {
+                              const trimmed = line.trim();
+                              
+                              // Match YouTube Shorts URLs
+                              const shortsMatch = trimmed.match(/(?:https?:\/\/)?(?:www\.)?(?:youtube\.com|youtu\.be)\/shorts\/([a-zA-Z0-9_-]+)/);
+                              if (shortsMatch) {
+                                const videoId = shortsMatch[1];
+                                return `<iframe width="100%" height="315" src="https://www.youtube.com/embed/${videoId}" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen style="max-width: 560px; margin: 10px auto; display: block;"></iframe>`;
+                              }
+                              
+                              // Match regular YouTube URLs
+                              const videoMatch = trimmed.match(/(?:https?:\/\/)?(?:www\.)?(?:youtube\.com\/watch\?v=|youtu\.be\/)([a-zA-Z0-9_-]+)/);
+                              if (videoMatch) {
+                                const videoId = videoMatch[1];
+                                return `<iframe width="100%" height="315" src="https://www.youtube.com/embed/${videoId}" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen style="max-width: 560px; margin: 10px auto; display: block;"></iframe>`;
+                              }
+                              
+                              return line;
+                            });
+                            setMediaLinks(converted.join('\n'));
+                            toast.success('YouTube URLs converted to embedded players!');
+                          }}
+                        >
+                          <Wand2 className="h-3 w-3 mr-1" />
+                          Convert YouTube URLs
+                        </Button>
+                      </div>
                       <Textarea 
                         id="media-links"
                         value={mediaLinks}
                         onChange={(e) => setMediaLinks(e.target.value)}
-                        className="min-h-[80px] font-mono text-sm"
-                        placeholder='<img src="https://example.com/image.jpg" style="max-width: 100%;" />\n<a href="https://youtube.com/video">Watch Video</a>'
+                        className="min-h-[120px] font-mono text-xs"
+                        placeholder='Paste YouTube URLs (one per line):\nhttps://youtube.com/shorts/Z3xJtemmWCk\nhttps://youtube.com/shorts/iQoAPd4O_9I\n\nThen click "Convert YouTube URLs" button above'
                       />
+                      <p className="text-xs text-muted-foreground">
+                        💡 Tip: Paste YouTube URLs and click "Convert YouTube URLs" to create embedded players
+                      </p>
                     </div>
                   </div>
                   

@@ -362,8 +362,8 @@ async function processEmailTemplate(template: any, lead: any, companySettings: a
       <div style="font-family: Arial, sans-serif; max-width: 100%; margin: 0 auto; background: #ffffff;">
         <div style="padding: 20px; background: white;">
           ${processedContent}
-          ${processedMediaLinks ? `<div style="margin: 30px 0; text-align: center;">${processedMediaLinks}</div>` : ''}
-          ${processedSignature ? `<div style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #e0e0e0;">${processedSignature}</div>` : ''}
+          ${processedMediaLinks ? `<div style="margin: 40px 0; text-align: center; line-height: 0;">${processedMediaLinks}</div>` : ''}
+          ${processedSignature ? `<div style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #e0e0e0; line-height: 1.5;">${processedSignature}</div>` : ''}
         </div>
       </div>
     `;
