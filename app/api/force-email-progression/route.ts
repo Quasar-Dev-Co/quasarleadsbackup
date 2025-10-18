@@ -242,8 +242,7 @@ async function generateEmailContentFromPrompt(
   prompt: string,
   lead: any,
   companySettings: any,
-  stage: string,
-  htmlDesign?: string
+  stage: string
 ): Promise<string> {
   try {
     const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
@@ -266,59 +265,7 @@ async function generateEmailContentFromPrompt(
       websiteUrl: companySettings?.websiteUrl || ''
     };
     
-    let aiPrompt = '';
-    
-    if (htmlDesign && htmlDesign.trim()) {
-      aiPrompt = `You are generating personalized email content for a sales/marketing email.
-
-LEAD INFORMATION:
-- Lead Name: ${leadData.leadName}
-- Company Owner: ${leadData.ownerName}
-- Company Name: ${leadData.companyName}
-- Company Reviews: ${leadData.companyReview || 'Not available'}
-- Location: ${leadData.location}
-- Target Industry: ${leadData.industry}
-
-YOUR COMPANY:
-- Service: ${leadData.service}
-- Sender Name: ${leadData.senderName}
-- Website: ${leadData.websiteUrl}
-
-EMAIL STAGE: ${stage}
-
-USER'S CONTENT PROMPT:
-${prompt}
-
-CUSTOM HTML DESIGN TEMPLATE:
-${htmlDesign}
-
-INSTRUCTIONS:
-1. ANALYZE the HTML design template structure carefully
-2. IDENTIFY the styling patterns (classes, inline styles, HTML elements used)
-3. Generate content that MATCHES the design's HTML structure and styling
-4. Use the SAME HTML elements, classes, and style attributes as the design
-5. If the design uses specific div structures, buttons, or formatting, replicate that style
-6. Naturally incorporate the lead's data where relevant
-7. If company reviews are available, reference them to show research
-8. Keep it concise and focused (2-3 short paragraphs max)
-9. Include a clear call-to-action
-10. Use these placeholders where appropriate:
-   - {{LEAD_NAME}} for the lead's name
-   - {{OWNER_NAME}} for the company owner
-   - {{COMPANY_NAME}} for the company
-   - {{COMPANY_REVIEW}} for reviews
-   - {{SENDER_NAME}} for your name
-   - {{COMPANY_SERVICE}} for your service
-   - {{TARGET_INDUSTRY}} for industry
-   - {{WEBSITE_URL}} for your website
-
-11. Make it feel personal and human, not templated
-12. Return ONLY the main email body content (NO subject line, NO signature, NO {{GENERATED_CONTENT}} placeholder)
-13. The content should be ready to replace {{GENERATED_CONTENT}} in the design template
-
-Generate the email body content now with HTML formatting that matches the design:`;
-    } else {
-      aiPrompt = `You are generating personalized email content for a sales/marketing email.
+    const aiPrompt = `You are generating personalized email content for a sales/marketing email.
 
 LEAD INFORMATION:
 - Lead Name: ${leadData.leadName}
@@ -355,11 +302,11 @@ INSTRUCTIONS:
    - {{TARGET_INDUSTRY}} for industry
    - {{WEBSITE_URL}} for your website
 
-8. Return HTML formatted content with proper paragraph tags
+8. Return HTML formatted content with proper paragraph tags and inline styles
 9. Make it feel personal and human, not templated
+10. Use professional HTML formatting with inline CSS styles for email compatibility
 
 Generate the email body content now:`;
-    }
 
     const completion = await openai.chat.completions.create({
       model: 'gpt-4o-mini',
@@ -391,13 +338,12 @@ async function processEmailTemplate(template: any, lead: any, companySettings: a
   if (template.contentPrompt && template.contentPrompt.trim()) {
     console.log('📝 Using NEW modular template system with AI generation');
     
-    // Generate content from prompt using AI + lead data + HTML design
+    // Generate content from prompt using AI + lead data
     const generatedContent = await generateEmailContentFromPrompt(
       template.contentPrompt,
       lead,
       companySettings,
-      stage,
-      template.htmlDesign
+      stage
     );
     
     // Replace variables in generated content
@@ -411,23 +357,16 @@ async function processEmailTemplate(template: any, lead: any, companySettings: a
       ? replaceEmailVariables(template.mediaLinks, lead, companySettings)
       : '';
     
-    // Use custom HTML design or default
-    if (template.htmlDesign && template.htmlDesign.trim()) {
-      finalHTML = template.htmlDesign
-        .replace('{{GENERATED_CONTENT}}', processedContent)
-        .replace('{{SIGNATURE}}', processedSignature)
-        .replace('{{MEDIA_LINKS}}', processedMediaLinks);
-    } else {
-      finalHTML = `
-        <div style="font-family: Arial, sans-serif; max-width: 650px; margin: 0 auto; background: #ffffff;">
-          <div style="padding: 40px 30px; background: white;">
-            ${processedContent}
-            ${processedMediaLinks ? `<div style="margin: 20px 0;">${processedMediaLinks}</div>` : ''}
-            ${processedSignature ? `<div style="margin-top: 30px;">${processedSignature}</div>` : ''}
-          </div>
+    // Use default professional email structure with proper media support
+    finalHTML = `
+      <div style="font-family: Arial, sans-serif; max-width: 100%; margin: 0 auto; background: #ffffff;">
+        <div style="padding: 20px; background: white;">
+          ${processedContent}
+          ${processedMediaLinks ? `<div style="margin: 30px 0; text-align: center;">${processedMediaLinks}</div>` : ''}
+          ${processedSignature ? `<div style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #e0e0e0;">${processedSignature}</div>` : ''}
         </div>
-      `;
-    }
+      </div>
+    `;
     
     finalText = `${processedContent.replace(/<[^>]*>/g, '')}\n\n${processedMediaLinks ? 'Media: ' + processedMediaLinks.replace(/<[^>]*>/g, '') + '\n\n' : ''}${processedSignature.replace(/<[^>]*>/g, '')}`;
     

@@ -42,7 +42,6 @@ export async function GET(request: NextRequest) {
       stage: template.stage,
       subject: template.subject,
       contentPrompt: template.contentPrompt || '',
-      htmlDesign: template.htmlDesign || '',
       emailSignature: template.emailSignature || '',
       mediaLinks: template.mediaLinks || '',
       htmlContent: template.htmlContent,
@@ -80,7 +79,6 @@ export async function POST(request: NextRequest) {
       stage, 
       subject, 
       contentPrompt, 
-      htmlDesign, 
       emailSignature, 
       mediaLinks,
       htmlContent, 
@@ -118,7 +116,6 @@ export async function POST(request: NextRequest) {
       stage,
       subject,
       contentPrompt: contentPrompt || '',
-      htmlDesign: htmlDesign || '',
       emailSignature: emailSignature || '',
       mediaLinks: mediaLinks || '',
       htmlContent: htmlContent || '', // Keep for backwards compatibility

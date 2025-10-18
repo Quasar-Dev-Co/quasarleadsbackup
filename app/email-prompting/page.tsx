@@ -134,7 +134,6 @@ export default function EmailPrompting() {
   const [contentPrompt, setContentPrompt] = useState("");
   const [emailSignature, setEmailSignature] = useState("");
   const [mediaLinks, setMediaLinks] = useState("");
-  const [htmlDesign, setHtmlDesign] = useState("");
   const [generatedContent, setGeneratedContent] = useState("");
   const [generatingContent, setGeneratingContent] = useState(false);
 
@@ -176,7 +175,6 @@ export default function EmailPrompting() {
       // Load modular components from new structure
       setEmailSubject(template.subject || "");
       setContentPrompt((template as any).contentPrompt || "");
-      setHtmlDesign((template as any).htmlDesign || "");
       setEmailSignature((template as any).emailSignature || "");
       setMediaLinks((template as any).mediaLinks || "");
       // Clear generated content since we're using prompt-based system
@@ -194,7 +192,6 @@ export default function EmailPrompting() {
       setGeneratedContent("");
       setEmailSignature("");
       setMediaLinks("");
-      setHtmlDesign("");
     }
   }, [activeTab, templates]);
 
@@ -262,13 +259,9 @@ export default function EmailPrompting() {
 
   // Assemble final template from modular components
   const assembleFinalTemplate = (): { htmlContent: string; textContent: string } => {
-    // Combine all components into final HTML
-    let finalHTML = htmlDesign || `<div style="font-family: Arial, sans-serif; max-width: 650px; margin: 0 auto; background: #ffffff;">`;
-    
-    // If custom HTML design is provided, use it
-    if (htmlDesign) {
-      finalHTML = htmlDesign;
-    } else {
+    // Use default professional HTML structure
+    let finalHTML = '';
+    {
       // Build default structure
       finalHTML += `
         <div style="padding: 40px 30px; background: white;">
@@ -324,7 +317,6 @@ ${emailSignature.replace(/<[^>]*>/g, '')}`;
         stage: activeTab,
         subject: emailSubject,
         contentPrompt: contentPrompt,
-        htmlDesign: htmlDesign,
         emailSignature: emailSignature,
         mediaLinks: mediaLinks,
         isActive: currentTemplate.isActive !== undefined ? currentTemplate.isActive : true,
@@ -556,27 +548,7 @@ IMPORTANT: Generate these components separately:
    - Any urgency or scarcity elements if appropriate for later stages
    Example: "Write a ${stageInfo.label} email. Start by acknowledging previous contact. Highlight our ${companySettings.service} and how it helps businesses in {{TARGET_INDUSTRY}}. If company reviews are available, mention them. Include a clear call-to-action to schedule a call. Keep it ${stageInfo.value.includes('three') || stageInfo.value.includes('four') ? 'direct and value-focused' : stageInfo.value.includes('six') || stageInfo.value.includes('seven') ? 'final and helpful' : 'professional and friendly'}."
 
-3. HTML DESIGN: A complete HTML email template structure with placeholders. Use modern email-safe HTML with inline styles. Include:
-   - Professional layout with proper spacing
-   - Sections for: {{GENERATED_CONTENT}}, {{SIGNATURE}}, {{MEDIA_LINKS}}
-   - Color scheme that matches professional B2B emails
-   - Mobile-responsive design
-   Example structure:
-   <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; background: #f5f5f5; padding: 20px;">
-     <div style="background: white; padding: 30px; border-radius: 8px;">
-       <div style="margin-bottom: 20px;">
-         {{GENERATED_CONTENT}}
-       </div>
-       <div style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #e0e0e0;">
-         {{MEDIA_LINKS}}
-       </div>
-       <div style="margin-top: 20px;">
-         {{SIGNATURE}}
-       </div>
-     </div>
-   </div>
-
-4. EMAIL SIGNATURE: Professional signature with HTML formatting and placeholders:
+3. EMAIL SIGNATURE: Professional signature with HTML formatting and placeholders:
    <p style="margin: 0;">Best regards,<br>
    <strong>{{SENDER_NAME}}</strong><br>
    {{SENDER_EMAIL}}<br>
@@ -586,7 +558,6 @@ Return as JSON:
 {
   "subject": "email subject here with optional {{LEAD_NAME}}",
   "contentPrompt": "detailed prompt for AI to generate content for this specific stage",
-  "htmlDesign": "complete HTML template with {{GENERATED_CONTENT}}, {{SIGNATURE}}, {{MEDIA_LINKS}} placeholders",
   "signature": "email signature with HTML formatting and placeholders"
 }`;
 
@@ -613,11 +584,10 @@ Return as JSON:
               stage: stageInfo.value,
               subject: generated.subject || `Follow-up: ${stageInfo.label}`,
               contentPrompt: generated.contentPrompt || `Write a professional ${stageInfo.label} email. Mention our ${companySettings.service} and include a call-to-action.`,
-              htmlDesign: generated.htmlDesign || `<div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">{{GENERATED_CONTENT}}{{MEDIA_LINKS}}{{SIGNATURE}}</div>`,
               emailSignature: generated.signature || `<p>Best regards,<br>{{SENDER_NAME}}<br>{{SENDER_EMAIL}}<br>{{WEBSITE_URL}}</p>`,
               mediaLinks: '',
               isActive: true,
-              variables: extractVariables((generated.contentPrompt || '') + (generated.signature || '') + (generated.htmlDesign || '')),
+              variables: extractVariables((generated.contentPrompt || '') + (generated.signature || '')),
               timing: stageTiming,
               userId
             };
@@ -1702,20 +1672,6 @@ Return as JSON:
                         onChange={(e) => setMediaLinks(e.target.value)}
                         className="min-h-[80px] font-mono text-sm"
                         placeholder='<img src="https://example.com/image.jpg" style="max-width: 100%;" />\n<a href="https://youtube.com/video">Watch Video</a>'
-                      />
-                    </div>
-
-                    {/* HTML Design - Optional */}
-                    <div className="space-y-2">
-                      <Label htmlFor="html-design">
-                        Custom HTML Design (Optional - Advanced)
-                      </Label>
-                      <Textarea 
-                        id="html-design"
-                        value={htmlDesign}
-                        onChange={(e) => setHtmlDesign(e.target.value)}
-                        className="min-h-[150px] font-mono text-xs"
-                        placeholder="Leave empty to use default design, or paste custom HTML wrapper here..."
                       />
                     </div>
                   </div>
