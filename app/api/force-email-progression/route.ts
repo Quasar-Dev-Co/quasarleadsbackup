@@ -285,13 +285,17 @@ EMAIL STAGE: ${stage}
 USER'S CONTENT PROMPT:
 ${prompt}
 
-INSTRUCTIONS:
-1. Generate ONLY the main email body content (NO subject line, NO signature)
-2. Use professional, conversational tone
-3. Naturally incorporate the lead's data where relevant
-4. If company reviews are available, reference them to show research
-5. Keep it concise and focused (2-3 short paragraphs max)
-6. Include a clear call-to-action
+CRITICAL INSTRUCTIONS:
+1. Generate ONLY the email body content - NO markdown, NO code blocks, NO '''html tags
+2. Length: MUST be 350-500 words (this is important for engagement)
+3. Use professional, conversational tone - sound like a human, not a robot
+4. Naturally incorporate the lead's data where relevant
+5. If company reviews are available, reference them to show you did research
+6. Write 4-5 detailed paragraphs to reach 350-500 words:
+   - Paragraph 1: Personalized opening (mention their company/industry)
+   - Paragraph 2-3: Explain your service and how it solves their specific problems
+   - Paragraph 4: Build credibility (mention results, expertise, or reviews if available)
+   - Paragraph 5: Clear call-to-action (schedule call, reply, visit website)
 7. Use these placeholders where appropriate:
    - {{LEAD_NAME}} for the lead's name
    - {{OWNER_NAME}} for the company owner
@@ -302,24 +306,33 @@ INSTRUCTIONS:
    - {{TARGET_INDUSTRY}} for industry
    - {{WEBSITE_URL}} for your website
 
-8. Return HTML formatted content with proper paragraph tags and inline styles
+8. Format as HTML with <p> tags and inline styles for email compatibility
 9. Make it feel personal and human, not templated
-10. Use professional HTML formatting with inline CSS styles for email compatibility
+10. DO NOT include: subject line, signature, markdown syntax, code blocks, or '''html tags
+11. Return ONLY the HTML paragraph tags with the content
 
-Generate the email body content now:`;
+Generate the email body content now (350-500 words):`;
 
     const completion = await openai.chat.completions.create({
       model: 'gpt-4o-mini',
       messages: [
-        { role: 'system', content: 'You are an expert email copywriter specialized in B2B sales and marketing emails.' },
+        { role: 'system', content: 'You are an expert email copywriter specialized in B2B sales and marketing emails. Return only clean HTML without markdown code blocks.' },
         { role: 'user', content: aiPrompt }
       ],
       temperature: 0.7,
-      max_tokens: 500
+      max_tokens: 800
     });
 
-    const generatedContent = completion.choices[0]?.message?.content || '';
-    console.log(`✨ Generated email content from prompt for ${lead.email}`);
+    let generatedContent = completion.choices[0]?.message?.content || '';
+    
+    // Clean up any markdown code block syntax that might have slipped through
+    generatedContent = generatedContent.replace(/```html\s*/gi, '');
+    generatedContent = generatedContent.replace(/```\s*/g, '');
+    generatedContent = generatedContent.replace(/'''html\s*/gi, '');
+    generatedContent = generatedContent.replace(/'''\s*/g, '');
+    generatedContent = generatedContent.trim();
+    
+    console.log(`✨ Generated email content from prompt for ${lead.email} (${generatedContent.length} chars)`);
     
     return generatedContent;
     
