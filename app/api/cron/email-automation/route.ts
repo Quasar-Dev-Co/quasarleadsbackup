@@ -7,8 +7,8 @@ import User from '@/models/userSchema';
 import nodemailer from 'nodemailer';
 import OpenAI from 'openai';
 
-const MAX_RETRY_ATTEMPTS = 10; // Maximum retry attempts before giving up
-const RETRY_DELAY_MINUTES = 5; // Wait 5 minutes before retry
+const MAX_RETRY_ATTEMPTS = 0; // NO RETRIES - Send only once, if failed then stop
+const RETRY_DELAY_MINUTES = 5; // Not used since retries are disabled
 
 // Load email templates and settings from database
 async function getEmailTemplateAndSettings(stage: string, userId?: string) {
@@ -506,25 +506,28 @@ async function sendEmailWithRetry(lead: any, stage: string, retryCount: number =
     return { success: true, messageId: info.messageId };
 
   } catch (error: any) {
-    console.error(`❌ Failed to send email to ${lead.email} (Retry ${retryCount}):`, error);
+    console.error(`❌ Failed to send email to ${lead.email}:`, error);
     
-    // Update lead with failure info
+    // NO RETRIES: Stop the email sequence immediately when email fails
     await Lead.findByIdAndUpdate(lead._id, {
       $set: {
-        emailStatus: retryCount >= MAX_RETRY_ATTEMPTS ? 'max_retries_exceeded' : 'failed',
+        emailSequenceActive: false, // Stop the sequence
+        emailStatus: 'failed',
         emailLastAttempt: new Date(),
-        emailRetryCount: retryCount,
-        emailFailureCount: lead.emailFailureCount + 1
+        emailRetryCount: 0,
+        emailFailureCount: (lead.emailFailureCount || 0) + 1,
+        emailStoppedReason: `Email sending failed: ${error.message}`
       },
       $push: {
         emailErrors: {
-          attempt: retryCount + 1,
+          attempt: 1,
           error: error.message,
           timestamp: new Date()
         }
       }
     });
 
+    console.log(`🛑 Email sequence stopped for ${lead.email} due to failure (no retries enabled)`);
     return { success: false, error: error.message };
   }
 }
@@ -578,60 +581,99 @@ export async function GET(request: NextRequest) {
     const now = new Date();
     console.log('🔍 Current time:', now.toISOString());
 
-    // Find leads that are ready for email automation
-    const leadsToProcess = await Lead.find({
+    console.log(`🔍 Starting atomic lead selection and locking process...`);
+
+    // CRITICAL FIX: Atomically SELECT and LOCK leads one by one to prevent batch race conditions
+    const leadsToProcess = [];
+    const maxLeadsToProcess = 20;
+    let attemptsCount = 0;
+    const maxAttempts = 100; // Try up to 100 leads to find 20 available ones
+    
+    // Define the query criteria for eligible leads
+    const baseQuery = {
       emailSequenceActive: true,
       emailAutomationEnabled: true,
+      // CRITICAL: Exclude locked statuses AND failed status (no retries)
+      emailStatus: { $nin: ['sending', 'processing', 'completed', 'max_retries_exceeded', 'failed'] },
+      // CRITICAL: Only process leads with scheduled time in the past
+      nextScheduledEmail: { $lte: now },
       $or: [
         // Ready status leads (new or existing stages)
         {
-          emailStatus: { $in: ['ready', null] }
+          emailStatus: { $in: ['ready', null] },
+          $or: [
+            { emailLastAttempt: null },
+            { emailLastAttempt: { $lte: new Date(now.getTime() - 2 * 60 * 1000) } }
+          ]
         },
         // Ready for next scheduled email (previous email was sent)
         {
-          nextScheduledEmail: { $lte: now },
-          emailStatus: 'sent'
-        },
-        // Failed emails that can be retried
-        {
-          emailStatus: 'failed',
-          emailRetryCount: { $lt: MAX_RETRY_ATTEMPTS },
+          emailStatus: 'sent',
           $or: [
             { emailLastAttempt: null },
-            { emailLastAttempt: { $lte: new Date(now.getTime() - RETRY_DELAY_MINUTES * 60 * 1000) } }
+            { emailLastAttempt: { $lte: new Date(now.getTime() - 2 * 60 * 1000) } }
           ]
         }
+        // REMOVED: Failed email retry logic - no retries enabled
       ]
-    }).limit(50); // Process max 50 leads per run
+    };
 
-    console.log(`📋 Found ${leadsToProcess.length} leads to process`);
+    // Atomically lock leads one by one until we have enough
+    while (leadsToProcess.length < maxLeadsToProcess && attemptsCount < maxAttempts) {
+      attemptsCount++;
+      
+      // ATOMIC OPERATION: Find one lead and immediately lock it
+      const lockedLead = await Lead.findOneAndUpdate(
+        baseQuery,
+        {
+          $set: {
+            emailStatus: 'processing',
+            emailLastAttempt: now
+          }
+        },
+        { 
+          new: true,
+          sort: { nextScheduledEmail: 1 } // Process oldest scheduled first
+        }
+      );
+      
+      if (lockedLead) {
+        leadsToProcess.push(lockedLead);
+        console.log(`🔒 Locked lead ${leadsToProcess.length}/${maxLeadsToProcess}: ${lockedLead.email}`);
+      } else {
+        // No more leads available
+        break;
+      }
+    }
+
+    console.log(`📋 Successfully locked ${leadsToProcess.length} leads for processing`);
 
     let processedCount = 0;
     let successCount = 0;
     let failureCount = 0;
     let retryCount = 0;
 
-    for (const lead of leadsToProcess) {
+    for (const lockResult of leadsToProcess) {
       try {
         processedCount++;
-        console.log(`\n🔄 Processing lead ${processedCount}/${leadsToProcess.length}: ${lead.email}`);
+        console.log(`\n🔄 Processing lead ${processedCount}/${leadsToProcess.length}: ${lockResult.email}`);
         
         // Get email history to determine what's been sent
-        const emailHistory = lead.emailHistory || [];
+        const emailHistory = lockResult.emailHistory || [];
         const sentEmails = emailHistory.filter((email: any) => email.status === 'sent');
         const emailsSentCount = sentEmails.length;
         
-        console.log(`\n📋 Lead analysis for ${lead.email}:`);
+        console.log(`\n📋 Lead analysis for ${lockResult.email}:`);
         console.log(`   Emails sent so far: ${emailsSentCount}/7`);
-        console.log(`   Email status: ${lead.emailStatus}`);
-        console.log(`   Retry count: ${lead.emailRetryCount || 0}`);
-        console.log(`   Next scheduled: ${lead.nextScheduledEmail}`);
+        console.log(`   Email status: ${lockResult.emailStatus}`);
+        console.log(`   Retry count: ${lockResult.emailRetryCount || 0}`);
+        console.log(`   Next scheduled: ${lockResult.nextScheduledEmail}`);
         console.log(`   Current time: ${now.toISOString()}`);
         
         // Check if sequence is completed
         if (emailsSentCount >= 7) {
-          console.log(`🏁 Email sequence completed for ${lead.email} (${emailsSentCount}/7 emails sent)`);
-          await Lead.findByIdAndUpdate(lead._id, {
+          console.log(`🏁 Email sequence completed for ${lockResult.email} (${emailsSentCount}/7 emails sent)`);
+          await Lead.findByIdAndUpdate(lockResult._id, {
             emailSequenceActive: false,
             emailStatus: 'completed',
             emailStoppedReason: 'Sequence completed (7 emails sent)',
@@ -649,58 +691,42 @@ export async function GET(request: NextRequest) {
         console.log(`🎯 Next email should be: ${nextStage} (Step ${emailsSentCount + 1}/7)`);
         
         // Check if this email was already sent recently (prevent duplicates)
+        // CRITICAL: Check last 10 minutes to prevent concurrent cron jobs from sending duplicates
         const recentlySent = emailHistory.find((email: any) => 
           email.stage === nextStage && 
           email.status === 'sent' &&
-          new Date(email.sentAt).getTime() > (Date.now() - 2 * 60 * 60 * 1000) // 2 hours
+          new Date(email.sentAt).getTime() > (Date.now() - 10 * 60 * 1000) // Last 10 minutes
         );
         
         if (recentlySent) {
-          console.log(`⏭️ Email for ${nextStage} already sent recently, skipping`);
-          continue;
-        }
-        
-        // Check if we should retry a failed email
-        if (lead.emailStatus === 'failed' && lead.emailRetryCount < MAX_RETRY_ATTEMPTS) {
-          const lastFailedEmail = emailHistory.find((email: any) => email.status === 'failed');
-          if (lastFailedEmail && lastFailedEmail.stage === nextStage) {
-            console.log(`🔄 Retrying ${nextStage} for ${lead.email} (Attempt ${(lead.emailRetryCount || 0) + 1}/${MAX_RETRY_ATTEMPTS})`);
-            retryCount++;
-          } else {
-            console.log(`⏭️ No failed email to retry for ${nextStage}, proceeding normally`);
-          }
-        }
-        
-        // Check if we've exceeded max retries
-        if ((lead.emailRetryCount || 0) >= MAX_RETRY_ATTEMPTS) {
-          console.log(`🚫 Max retries exceeded for ${lead.email} - stopping email sequence`);
-          await Lead.findByIdAndUpdate(lead._id, {
-            emailSequenceActive: false,
-            emailStatus: 'max_retries_exceeded',
-            emailStoppedReason: `Max retry attempts (${MAX_RETRY_ATTEMPTS}) exceeded`,
-            updatedAt: new Date()
+          console.log(`⏭️ Email for ${nextStage} already sent within last 10 minutes, skipping to prevent duplicate`);
+          // Update status to 'sent' to prevent re-selection
+          await Lead.findByIdAndUpdate(lockResult._id, {
+            emailStatus: 'sent',
+            emailLastAttempt: new Date()
           });
-          failureCount++;
           continue;
         }
+        
+        // RETRY LOGIC REMOVED: No retries - failed emails stay failed and sequence stops
         
         // Check if it's time to send the next email
-        if (lead.emailStatus === 'sent' && lead.nextScheduledEmail && lead.nextScheduledEmail > now) {
-          console.log(`⏭️ Not time yet for ${lead.email} - next email scheduled for ${lead.nextScheduledEmail.toISOString()}`);
+        if (lockResult.emailStatus === 'sent' && lockResult.nextScheduledEmail && lockResult.nextScheduledEmail > now) {
+          console.log(`⏭️ Not time yet for ${lockResult.email} - next email scheduled for ${lockResult.nextScheduledEmail.toISOString()}`);
           continue;
         }
 
         // Send the email
-        console.log(`🚀 About to send ${nextStage} to ${lead.email} (Step ${emailsSentCount + 1}/7)`);
-        const result = await sendEmailWithRetry(lead, nextStage, lead.emailRetryCount || 0);
+        console.log(`🚀 About to send ${nextStage} to ${lockResult.email} (Step ${emailsSentCount + 1}/7)`);
+        const result = await sendEmailWithRetry(lockResult, nextStage, lockResult.emailRetryCount || 0);
         console.log(`📨 Email send result:`, result);
         
         if (result.success) {
           successCount++;
-          console.log(`✅ Successfully sent ${nextStage} to ${lead.email} - MessageID: ${result.messageId}`);
+          console.log(`✅ Successfully sent ${nextStage} to ${lockResult.email} - MessageID: ${result.messageId}`);
         } else {
           failureCount++;
-          console.log(`❌ Failed to send ${nextStage} to ${lead.email}: ${result.error}`);
+          console.log(`❌ Failed to send ${nextStage} to ${lockResult.email}: ${result.error}`);
           console.log(`❌ Full error details:`, result);
         }
 
@@ -708,16 +734,16 @@ export async function GET(request: NextRequest) {
         await new Promise(resolve => setTimeout(resolve, 1000));
 
       } catch (error: any) {
-        console.error(`💥 Error processing lead ${lead.email}:`, error);
+        console.error(`💥 Error processing lead ${lockResult.email}:`, error);
         failureCount++;
         
         // Mark lead as failed
-        await Lead.findByIdAndUpdate(lead._id, {
+        await Lead.findByIdAndUpdate(lockResult._id, {
           emailStatus: 'failed',
           emailLastAttempt: new Date(),
           $push: {
             emailErrors: {
-              attempt: (lead.emailRetryCount || 0) + 1,
+              attempt: (lockResult.emailRetryCount || 0) + 1,
               error: error.message,
               timestamp: new Date()
             }

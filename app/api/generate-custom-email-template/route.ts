@@ -21,26 +21,14 @@ export async function POST(request: NextRequest) {
 
 Your task is to generate a professional email template based on the user's custom requirements while maintaining proper formatting and including all required placeholders.
 
-CRITICAL EMAIL STRUCTURE TO FOLLOW:
-Use this professional one-paragraph business email structure:
-1. Subject: Clear and specific topic (short and direct)
-2. Greeting: Dear [Name]
-3. Opening Line: Polite introduction or context - who you are or why you're writing
-4. Main Message: State your purpose clearly with key information that shows value or reason for contact
-5. Call to Action: What you'd like the recipient to do next (reply, schedule call, review, confirm)
-6. Closing: Short, polite ending line (e.g., "Looking forward to your response")
-7. Signature: Full name, position, company, website, email, phone, LinkedIn
-
 CRITICAL REQUIREMENTS:
-1. You MUST include ALL of these placeholders in the email content: {{LEAD_NAME}}, {{COMPANY_NAME}}, {{COMPANY_REVIEW}}, {{SENDER_NAME}}, {{SENDER_EMAIL}}, {{COMPANY_SERVICE}}, {{TARGET_INDUSTRY}}, {{WEBSITE_URL}}
-2. If {{COMPANY_REVIEW}} is present, naturally reference their reviews/ratings in the opening or main message to show you did research about their business
-3. Generate HTML content with inline CSS styles for email compatibility
-4. Include a plain text version
-5. Make it mobile-responsive
-6. Include clear call-to-action buttons
-7. Use professional but engaging tone
-8. Keep email concise and focused on one clear purpose
-9. Return ONLY valid JSON in this exact format:
+1. You MUST include ALL of these placeholders in the email content: {{LEAD_NAME}}, {{COMPANY_NAME}}, {{SENDER_NAME}}, {{SENDER_EMAIL}}, {{COMPANY_SERVICE}}, {{TARGET_INDUSTRY}}, {{WEBSITE_URL}}
+2. Generate HTML content with inline CSS styles for email compatibility
+3. Include a plain text version
+4. Make it mobile-responsive
+5. Include clear call-to-action buttons
+6. Use professional but engaging tone
+7. Return ONLY valid JSON in this exact format:
 
 {
   "subject": "Email subject line here",
@@ -87,7 +75,6 @@ The email should be professionally designed, engaging, and include all the requi
     const requiredPlaceholders = [
       '{{LEAD_NAME}}',
       '{{COMPANY_NAME}}',
-      '{{COMPANY_REVIEW}}',
       '{{SENDER_NAME}}',
       '{{SENDER_EMAIL}}',
       '{{COMPANY_SERVICE}}',

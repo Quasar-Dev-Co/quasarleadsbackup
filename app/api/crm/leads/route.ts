@@ -652,6 +652,8 @@ export async function POST(request: NextRequest) {
       tags,
       googleAds,
       organicRanking,
+      rating,
+      reviews,
       authInformation
     } = body;
     
@@ -721,6 +723,8 @@ export async function POST(request: NextRequest) {
       tags: tags || [],
       googleAds: googleAds || false,
       organicRanking: organicRanking || null,
+      rating: rating || null,
+      reviews: reviews || null,
       dealValue: dealValue || 0,
       probability: stage === 'deal' ? 90 : stage === 'meeting' ? 70 : stage === 'meeting' ? 50 : 25,
       assignedTo: userId, // Assign to current user

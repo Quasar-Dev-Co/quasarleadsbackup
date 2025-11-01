@@ -10,7 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { SectionHeader } from "@/components/ui/section-header";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Filter, RotateCw, Search, Sparkles, ArrowUpRight, X, RefreshCw, Star, Zap, Clock, Play, Download, Mail, Upload } from "lucide-react";
+import { Filter, RotateCw, Search, Sparkles, ArrowUpRight, X, RefreshCw, Star, Zap, Clock, Play, Download, Mail, Upload, ShieldCheck, BadgeAlert, BadgeCheck, XCircle } from "lucide-react";
 import { useTranslations } from "@/hooks/use-translations";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { auth } from "@/lib/auth";
@@ -83,6 +83,17 @@ type Lead = {
         hr_email: string;
         executive_name: string;
         executive_email: string;
+    };
+    // Email validation fields
+    emailValidationStatus?: 'notScanned' | 'valid' | 'invalid' | 'checking';
+    emailValidationCheckedAt?: Date;
+    emailValidationDetails?: {
+        isDeliverable?: boolean;
+        isFreeEmail?: boolean;
+        isDisposable?: boolean;
+        syntax?: boolean;
+        smtpValid?: boolean;
+        reason?: string;
     };
 };
 
@@ -566,10 +577,57 @@ const LeadsCollection = () => {
             return;
         }
 
+        // CRITICAL: Check email validation status for all selected leads
+        const leadIds = Array.from(selectedLeads);
+        const selectedLeadsData = filteredLeads.filter(lead => leadIds.includes(lead._id));
+        
+        // Check validation status
+        const notValidated = selectedLeadsData.filter(lead => 
+            !lead.emailValidationStatus || 
+            lead.emailValidationStatus === 'notScanned' || 
+            lead.emailValidationStatus === 'checking'
+        );
+        
+        const invalidEmails = selectedLeadsData.filter(lead => 
+            lead.emailValidationStatus === 'invalid'
+        );
+
+        const validEmails = selectedLeadsData.filter(lead => 
+            lead.emailValidationStatus === 'valid'
+        );
+
+        // If ANY leads are not validated or invalid, block automation
+        if (notValidated.length > 0 || invalidEmails.length > 0) {
+            const totalSelected = selectedLeadsData.length;
+            const notValidatedCount = notValidated.length;
+            const invalidCount = invalidEmails.length;
+            const validCount = validEmails.length;
+            
+            let errorMessage = `❌ Cannot start email automation!\n\n`;
+            errorMessage += `📊 Validation Status:\n`;
+            errorMessage += `✅ Valid: ${validCount}/${totalSelected}\n`;
+            
+            if (notValidatedCount > 0) {
+                errorMessage += `⚠️ Not Validated: ${notValidatedCount}\n`;
+            }
+            if (invalidCount > 0) {
+                errorMessage += `❌ Invalid Emails: ${invalidCount}\n`;
+            }
+            
+            errorMessage += `\n💡 Solution:\n`;
+            errorMessage += `1. Click "Email Validation" button\n`;
+            errorMessage += `2. Wait for validation to complete\n`;
+            errorMessage += `3. Remove invalid emails from selection\n`;
+            errorMessage += `4. Try again with validated emails only`;
+            
+            toast.error(errorMessage, { duration: 10000 });
+            return;
+        }
+
+        // All emails are validated - proceed with automation
         setIsStartingEmailAutomation(true);
 
         try {
-            const leadIds = Array.from(selectedLeads);
             // Determine outreach config from UI selections if present
             const outreachRecipient = selectedRecipient || undefined; // 'lead' | 'company'
             const senderIdentity = selectedSenderIdentity || undefined; // 'company' | 'author'
@@ -967,6 +1025,47 @@ const LeadsCollection = () => {
         }
     };
 
+    // Email Validation Status Badge Component
+    const EmailValidationBadge = ({ status }: { status?: 'notScanned' | 'valid' | 'invalid' | 'checking' }) => {
+        if (!status || status === 'notScanned') {
+            return (
+                <div className="flex items-center gap-1.5 text-yellow-600" title="Email not validated yet">
+                    <BadgeAlert className="h-4 w-4" />
+                    <span className="text-xs font-medium">Not Scanned</span>
+                </div>
+            );
+        }
+        
+        if (status === 'checking') {
+            return (
+                <div className="flex items-center gap-1.5 text-blue-600" title="Validation in progress">
+                    <RefreshCw className="h-4 w-4 animate-spin" />
+                    <span className="text-xs font-medium">Checking...</span>
+                </div>
+            );
+        }
+        
+        if (status === 'valid') {
+            return (
+                <div className="flex items-center gap-1.5 text-green-600" title="Email is valid and deliverable">
+                    <BadgeCheck className="h-4 w-4" />
+                    <span className="text-xs font-medium">Valid</span>
+                </div>
+            );
+        }
+        
+        if (status === 'invalid') {
+            return (
+                <div className="flex items-center gap-1.5 text-red-600" title="Email is invalid or undeliverable">
+                    <XCircle className="h-4 w-4" />
+                    <span className="text-xs font-medium">Invalid</span>
+                </div>
+            );
+        }
+        
+        return null;
+    };
+
     return (
         <div className="animate-in">
             {/* Current User Information */}
@@ -1313,118 +1412,61 @@ const LeadsCollection = () => {
                     </Button>
                     <Button 
                         variant="outline" 
-                        className="flex items-center gap-1"
-                        onClick={enrichLeadsWithOwners}
-                        disabled={isEnrichingOwners}
-                        title="Use AI to find company owners for your leads"
-                    >
-                        <span className="h-4 w-4">🔍</span>
-                        <span>{isEnrichingOwners ? 'Enriching...' : 'Enrich Owners'}</span>
-                    </Button>
-
-                    <Button 
-                        variant="outline" 
-                        className="flex items-center gap-1 text-red-600 border-red-200 hover:bg-red-50"
+                        className="flex items-center gap-1 text-green-600 border-green-200 hover:bg-green-50"
                         onClick={async () => {
-                            const confirmEmailCleanup = confirm("🤖 AI-Powered Email Validation\n\nThis will use OpenAI to intelligently analyze ALL emails and remove invalid ones.\n\n• Uses GPT-4o-mini for smart validation\n• Processes in batches of 30 emails\n• Large datasets use cronjob processing\n• Only removes obviously invalid emails\n\nContinue?");
-                            if (!confirmEmailCleanup) return;
-                            
-                            setIsCleaningEmails(true);
+                            const confirmed = confirm('Start email validation for NEW LEADS?\n\n✅ Only validates leads in "New Leads" tab (status=active)\n✅ Each email validated only ONCE\n✅ Batches of 20 every 3 minutes\n✅ Continues in background\n\nNote: Already validated emails will NOT be re-scanned.\n\nContinue?');
+                            if (!confirmed) return;
                             
                             try {
-                                toast.loading("🤖 AI analyzing emails with OpenAI... This may take a few minutes.", { duration: 15000 });
+                                const userId = await auth.getCurrentUserId();
+                                if (!userId) {
+                                    toast.error('Please log in to validate emails');
+                                    return;
+                                }
+
+                                toast.loading('Starting email validation...', { duration: 3000 });
                                 
-                                const authHeader = auth.getAuthHeader();
-                                const response = await fetch('/api/leads/cleanup-invalid-emails', {
+                                const response = await fetch('/api/email-validation/start', {
                                     method: 'POST',
-                                    headers: authHeader ? { Authorization: authHeader } : undefined
+                                    headers: { 'Content-Type': 'application/json' },
+                                    body: JSON.stringify({ userId })
                                 });
-                                
+
+                                const data = await response.json();
+
                                 if (!response.ok) {
-                                    const err = await response.json().catch(() => ({}));
-                                    if (err?.error === 'OPENAI_API_KEY_MISSING') {
-                                        toast.error('Please enter your OpenAI API key in Account Settings → Credentials.');
-                                    }
-                                    throw new Error(err?.message || 'Failed to cleanup invalid emails');
+                                    throw new Error(data.error || 'Failed to start validation');
                                 }
-                                
-                                const result = await response.json();
-                                
-                                if (result.success) {
-                                    if (result.cronjobStarted) {
-                                        toast.success(
-                                            `🤖 AI Email Cleanup Started!\n` +
-                                            `• Total emails: ${result.totalEmails}\n` +
-                                            `• Processing in ${result.totalBatches} batches\n` +
-                                            `• Cronjob will process automatically\n` +
-                                            `• Check logs for progress`,
-                                            { duration: 10000 }
-                                        );
-                                    } else {
-                                        toast.success(
-                                            `🤖 AI Email Cleanup Complete!\n` +
-                                            `• Processed: ${result.processed} emails\n` +
-                                            `• Valid: ${result.valid} emails\n` +
-                                            `• Invalid removed: ${result.invalid} emails\n` +
-                                            `• Time: ${result.processingTime}ms`,
-                                            { duration: 8000 }
-                                        );
-                                    }
-                                    
-                                    // Refresh the leads list
-                                    fetchLeads();
+
+                                if (data.leadsToValidate === 0) {
+                                    toast.success('✅ All NEW leads already validated!\n\nLeads in "Processing" or "Emailed" tabs are not re-scanned.');
                                 } else {
-                                    throw new Error(result.error);
+                                    const totalBatches = Math.ceil(data.leadsToValidate / 20);
+                                    const lastBatchSize = data.leadsToValidate % 20 || 20;
+                                    
+                                    toast.success(
+                                        `🔍 Email validation started for NEW LEADS!\n\n` +
+                                        `📊 Total: ${data.leadsToValidate} leads\n` +
+                                        `📦 Batches: ${totalBatches} (${totalBatches - 1} × 20 + ${lastBatchSize})\n` +
+                                        `⏰ Every 3 minutes\n` +
+                                        `✅ Each email validated ONCE only\n\n` +
+                                        `Refresh to see progress!`,
+                                        { duration: 10000 }
+                                    );
                                 }
+                                
+                                // Refresh leads to show updated status
+                                setTimeout(() => fetchLeads(), 2000);
+
                             } catch (error: any) {
-                                console.error('AI Email cleanup error:', error);
-                                toast.error(`Failed to cleanup invalid emails: ${error.message}`);
-                            } finally {
-                                setIsCleaningEmails(false);
+                                console.error('Email validation error:', error);
+                                toast.error(`Failed to start validation: ${error.message}`);
                             }
                         }}
-                        disabled={isCleaningEmails}
-                        title="Use AI to intelligently validate and remove invalid emails"
+                        title="Validate email addresses before sending"
                     >
-                        {isCleaningEmails ? (
-                            <>
-                                <RotateCw className="h-4 w-4 animate-spin" />
-                                <span>AI Analyzing...</span>
-                            </>
-                        ) : (
-                            <>
-                                <Sparkles className="h-4 w-4" />
-                                <span>AI Clean Emails</span>
-                            </>
-                        )}
-                    </Button>
-                    <Button 
-                        variant="outline" 
-                        className="flex items-center gap-1 text-orange-600 border-orange-200 hover:bg-orange-50"
-                        onClick={async () => {
-                            const confirmCleanup = confirm("Clean duplicate leads by exact email match? This will delete newer duplicates and keep the oldest record. Continue?");
-                            if (!confirmCleanup) return;
-
-                            try {
-                                const authHeader = auth.getAuthHeader();
-                                const resp = await fetch('/api/leads/cleanup-duplicates?by=email&scope=user', {
-                                    method: 'POST',
-                                    headers: authHeader ? { Authorization: authHeader } : undefined
-                                });
-                                const data = await resp.json();
-                                if (!resp.ok || !data.success) throw new Error(data?.error || 'Failed to clean duplicates');
-
-                                toast.success(`Removed ${data?.stats?.duplicatesRemoved || 0} duplicate leads. Updated ${data?.stats?.leadsUpdated || 0} records.`);
-                                fetchLeads();
-                            } catch (e: any) {
-                                console.error('Duplicate cleanup failed:', e);
-                                toast.error(e?.message || 'Duplicate cleanup failed');
-                            }
-                        }}
-                        title="Delete duplicate leads by exact email for this user"
-                    >
-                        <RotateCw className="h-4 w-4" />
-                        <span>Clean Duplicate Leads</span>
+                        <ShieldCheck className="h-4 w-4" />
+                        <span>Email Validation</span>
                     </Button>
                     <Button 
                         variant="outline" 
@@ -1433,7 +1475,7 @@ const LeadsCollection = () => {
                         title={String(t("toggleLeadSelectionMode"))}
                     >
                         <Mail className="h-4 w-4" />
-                        <span>{t(isSelectionMode ? "cancelSelection" : "selectLeadsForAutomation")}</span>
+                        <span>{t(isSelectionMode ? "Cancel Selection" : "Select Leads For Automation")}</span>
                     </Button>
                     <Button 
                         variant="outline" 
@@ -1519,23 +1561,87 @@ const LeadsCollection = () => {
                                 )}
                             </div>
                         </div>
-                        {selectedLeads.size > 0 && (
-                            <div className="mt-3 p-3 bg-white rounded border text-sm text-gray-600">
-                                <div className="flex items-start gap-2">
-                                    <div className="text-blue-600 font-semibold">{t("options")}:</div>
-                                </div>
-                                <div className="ml-2 mt-1 space-y-1">
-                                    <div className="flex items-center gap-2">
-                                        <span className="text-blue-600">🚀</span>
-                                        <span><strong>{t("startAutomation")}:</strong> {t("usesEmailTemplatesFromEmailPrompting")}</span>
+                        {selectedLeads.size > 0 && (() => {
+                            // Calculate validation status for selected leads
+                            const leadIds = Array.from(selectedLeads);
+                            const selectedLeadsData = filteredLeads.filter(lead => leadIds.includes(lead._id));
+                            
+                            const validCount = selectedLeadsData.filter(lead => lead.emailValidationStatus === 'valid').length;
+                            const notValidatedCount = selectedLeadsData.filter(lead => 
+                                !lead.emailValidationStatus || 
+                                lead.emailValidationStatus === 'notScanned' || 
+                                lead.emailValidationStatus === 'checking'
+                            ).length;
+                            const invalidCount = selectedLeadsData.filter(lead => lead.emailValidationStatus === 'invalid').length;
+                            
+                            const allValidated = notValidatedCount === 0 && invalidCount === 0;
+                            
+                            return (
+                                <>
+                                    {/* Validation Status Warning */}
+                                    <div className={`mt-3 p-3 rounded border ${allValidated ? 'bg-green-50 border-green-300' : 'bg-yellow-50 border-yellow-300'}`}>
+                                        <div className="flex items-center gap-2 mb-2">
+                                            <ShieldCheck className={`h-5 w-5 ${allValidated ? 'text-green-600' : 'text-yellow-600'}`} />
+                                            <span className={`font-semibold ${allValidated ? 'text-green-800' : 'text-yellow-800'}`}>
+                                                Email Validation Status
+                                            </span>
+                                        </div>
+                                        <div className="ml-7 space-y-1 text-sm">
+                                            <div className="flex items-center gap-2">
+                                                <BadgeCheck className="h-4 w-4 text-green-600" />
+                                                <span className="text-green-700">Valid: <strong>{validCount}/{selectedLeadsData.length}</strong></span>
+                                            </div>
+                                            {notValidatedCount > 0 && (
+                                                <div className="flex items-center gap-2">
+                                                    <BadgeAlert className="h-4 w-4 text-yellow-600" />
+                                                    <span className="text-yellow-700">Not Validated: <strong>{notValidatedCount}</strong></span>
+                                                </div>
+                                            )}
+                                            {invalidCount > 0 && (
+                                                <div className="flex items-center gap-2">
+                                                    <XCircle className="h-4 w-4 text-red-600" />
+                                                    <span className="text-red-700">Invalid: <strong>{invalidCount}</strong></span>
+                                                </div>
+                                            )}
+                                            {!allValidated && (
+                                                <div className="mt-2 p-2 bg-white rounded border border-yellow-200">
+                                                    <p className="text-yellow-800 text-xs font-medium">
+                                                        ⚠️ Email automation requires ALL emails to be validated and valid!
+                                                    </p>
+                                                    <p className="text-yellow-700 text-xs mt-1">
+                                                        Click "Email Validation" button to validate unvalidated emails.
+                                                    </p>
+                                                </div>
+                                            )}
+                                            {allValidated && (
+                                                <div className="mt-2 p-2 bg-white rounded border border-green-200">
+                                                    <p className="text-green-800 text-xs font-medium">
+                                                        ✅ All selected emails are validated! Ready to start automation.
+                                                    </p>
+                                                </div>
+                                            )}
+                                        </div>
                                     </div>
-                                    <div className="flex items-center gap-2">
-                                        <span className="text-red-600">🗑️</span>
-                                        <span><strong>{t("permanentlyDeleteSelectedLeads")}:</strong> {t("permanentlyRemoveSelectedLeadsFromDatabase")}</span>
+                                    
+                                    {/* Options Section */}
+                                    <div className="mt-3 p-3 bg-white rounded border text-sm text-gray-600">
+                                        <div className="flex items-start gap-2">
+                                            <div className="text-blue-600 font-semibold">{t("options")}:</div>
+                                        </div>
+                                        <div className="ml-2 mt-1 space-y-1">
+                                            <div className="flex items-center gap-2">
+                                                <span className="text-blue-600">🚀</span>
+                                                <span><strong>{t("startAutomation")}:</strong> {t("usesEmailTemplatesFromEmailPrompting")}</span>
+                                            </div>
+                                            <div className="flex items-center gap-2">
+                                                <span className="text-red-600">🗑️</span>
+                                                <span><strong>{t("permanentlyDeleteSelectedLeads")}:</strong> {t("permanentlyRemoveSelectedLeadsFromDatabase")}</span>
+                                            </div>
+                                        </div>
                                     </div>
-                                </div>
-                            </div>
-                        )}
+                                </>
+                            );
+                        })()}
                     </CardContent>
                 </Card>
             )}
@@ -1610,6 +1716,7 @@ const LeadsCollection = () => {
                                         <TableHead className="min-w-[200px]">{String(t("company"))}</TableHead>
                                         <TableHead className="min-w-[120px]">{String(t("location"))}</TableHead>
                                         <TableHead className="min-w-[180px]">{String(t("email"))}</TableHead>
+                                        <TableHead className="min-w-[120px]">Email Status</TableHead>
                                         <TableHead className="min-w-[80px]">Rating</TableHead>
                                         <TableHead className="min-w-[200px]">Email Automation</TableHead>
                                         <TableHead className="min-w-[120px]">Auth Info</TableHead>
@@ -1656,6 +1763,9 @@ const LeadsCollection = () => {
                                                     </button>
                                                 </TableCell>
                                                 <TableCell>
+                                                    <EmailValidationBadge status={lead.emailValidationStatus} />
+                                                </TableCell>
+                                                <TableCell>
                                                     {lead.rating ? (
                                                         <div className="flex items-center gap-1 text-sm">
                                                             <Star className="h-4 w-4 text-yellow-500 fill-yellow-500" />
@@ -1685,7 +1795,7 @@ const LeadsCollection = () => {
                                         ))
                                     ) : (
                                         <TableRow>
-                                            <TableCell colSpan={isSelectionMode ? 10 : 9} className="text-center py-6 text-muted-foreground">
+                                            <TableCell colSpan={isSelectionMode ? 11 : 10} className="text-center py-6 text-muted-foreground">
                                                 {isRefreshing ? (
                                                     <div className="flex items-center justify-center gap-2">
                                                         <RotateCw className="h-4 w-4 animate-spin" />

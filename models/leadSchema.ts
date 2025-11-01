@@ -68,6 +68,17 @@ interface Lead extends Document {
     error: string;
     timestamp: Date;
   }>;
+  // Email validation fields
+  emailValidationStatus?: 'notScanned' | 'valid' | 'invalid' | 'checking';
+  emailValidationCheckedAt?: Date;
+  emailValidationDetails?: {
+    isDeliverable?: boolean;
+    isFreeEmail?: boolean;
+    isDisposable?: boolean;
+    syntax?: boolean;
+    smtpValid?: boolean;
+    reason?: string;
+  };
   // Outreach configuration
   outreachRecipient?: 'lead' | 'company';
   senderIdentity?: 'company' | 'author';
@@ -351,8 +362,26 @@ const leadSchema = new Schema<Lead>({
     attempt: Number,
     error: String,
     timestamp: Date
-  }]
-  ,
+  }],
+  // Email validation fields
+  emailValidationStatus: {
+    type: String,
+    enum: ['notScanned', 'valid', 'invalid', 'checking'],
+    default: 'notScanned',
+    index: true
+  },
+  emailValidationCheckedAt: {
+    type: Date,
+    default: null
+  },
+  emailValidationDetails: {
+    isDeliverable: { type: Boolean, default: null },
+    isFreeEmail: { type: Boolean, default: null },
+    isDisposable: { type: Boolean, default: null },
+    syntax: { type: Boolean, default: null },
+    smtpValid: { type: Boolean, default: null },
+    reason: { type: String, default: '' }
+  },
   // Outreach configuration
   outreachRecipient: {
     type: String,

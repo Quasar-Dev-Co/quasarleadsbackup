@@ -11,11 +11,12 @@ const incomingEmailSchema = new mongoose.Schema({
   htmlContent: { type: String, default: '' },
   status: {
     type: String,
-    enum: ['unread', 'processing', 'responded', 'failed'],
+    enum: ['unread', 'processing', 'pending_ai', 'responded', 'failed', 'processed'],
     default: 'unread'
   },
   receivedAt: { type: Date, default: Date.now },
-  respondedAt: { type: Date },
+  processedAt: { type: Date }, // When the cron job processed this email
+  respondedAt: { type: Date }, // When user actually sent the response
   isReply: { type: Boolean, default: false }, // Whether this is a reply to our outgoing email
   isRecent: { type: Boolean, default: true }, // Whether this is from the last 20 minutes
   originalEmailId: { type: mongoose.Schema.Types.ObjectId, ref: 'IncomingEmail' }, // Reference to original email if this is a reply
@@ -51,8 +52,9 @@ const aiResponseSchema = new mongoose.Schema({
   reasoning: { type: String, required: true },
   status: {
     type: String,
-    enum: ['sending', 'sent', 'failed'],
+    enum: ['draft', 'sending', 'sent', 'failed'],
     required: true,
+    default: 'draft'
   },
   responseType: { 
     type: String,

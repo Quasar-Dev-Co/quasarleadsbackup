@@ -86,13 +86,16 @@ export async function POST(request: NextRequest) {
 
         // Start email automation
         const now = new Date();
+        // CRITICAL: Add 2-minute delay before first email to prevent race conditions
+        const firstEmailTime = new Date(now.getTime() + 2 * 60 * 1000); // 2 minutes from now
+        
         const updateData: any = {
           emailSequenceActive: true,
           emailAutomationEnabled: true,
           emailSequenceStage: 'not_called',
           emailSequenceStep: 0,
           emailSequenceStartDate: now,
-          nextScheduledEmail: now, // Send first email immediately
+          nextScheduledEmail: firstEmailTime, // Wait 2 minutes before first email
           emailStatus: 'ready',
           emailRetryCount: 0,
           emailFailureCount: 0,

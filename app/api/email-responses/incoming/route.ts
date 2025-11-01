@@ -142,95 +142,28 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     await incomingEmail.save();
     
     console.log(`📧 New incoming email saved from ${leadEmail}`);
+    console.log(`   - Reply to sequence: ${isReplyToSequence ? 'YES' : 'NO'}`);
+    console.log(`   - Original stage: ${originalEmailStage || 'N/A'}`);
+    console.log(`   - Conversation count: ${conversationCount}`);
+    console.log(`   - 3rd+ reply: ${isThirdReply ? 'YES' : 'NO'}`);
+    console.log(`   - Status: ${incomingEmail.status} (waiting for cron job to process)`);
     
-    // Auto-generate response based on conversation count and sequence status
-    if (isReplyToSequence && originalEmailStage) {
-      console.log(`📧 Processing sequence reply (stage: ${originalEmailStage}, count: ${conversationCount})`);
-      
-      if (isThirdReply) {
-        // For 3rd+ replies, send beautiful Dutch final template
-        console.log(`📋 3rd+ reply from ${leadEmail} - Sending Dutch final template with booking link`);
-        
-        try {
-          const finalTemplate = await generateDutchFinalTemplate(incomingEmail, lead);
-          
-          if (finalTemplate.success) {
-            console.log(`✅ Dutch final template sent successfully to ${leadEmail}`);
-            
-            // Update the incoming email status
-            await IncomingEmail.findByIdAndUpdate(incomingEmail._id, {
-              status: 'responded',
-              respondedAt: new Date()
-            });
-            
-            // Update lead status to show they replied
-            await Lead.findByIdAndUpdate(lead._id, {
-              status: 'replied',
-              updatedAt: new Date()
-            });
-            
-            return NextResponse.json({
-              success: true,
-              emailId: incomingEmail._id.toString(),
-              message: 'Incoming email saved and Dutch final template sent.',
-              aiResponseGenerated: true,
-              originalStage: originalEmailStage,
-              conversationCount: conversationCount,
-              isThirdReply: isThirdReply,
-              templateType: 'dutch_final'
-            });
-          } else {
-            console.log(`⚠️ Dutch final template generation failed: ${finalTemplate.error}`);
-          }
-        } catch (templateError) {
-          console.error(`❌ Error generating Dutch final template:`, templateError);
-        }
-      }
-      
-      // Generate normal AI response for 1st and 2nd replies only
-      console.log(`🤖 Auto-generating AI response for sequence reply (reply #${conversationCount})`);
-      
-      try {
-        const aiResponse = await generateAIResponseForSequenceReply(incomingEmail, lead, originalEmailStage);
-        
-        if (aiResponse.success) {
-          console.log(`✅ Auto-generated AI response for sequence reply`);
-          
-          // Update the incoming email status
-          await IncomingEmail.findByIdAndUpdate(incomingEmail._id, {
-            status: 'responded',
-            respondedAt: new Date()
-          });
-          
-          // Update lead status to show they replied
-          await Lead.findByIdAndUpdate(lead._id, {
-            status: 'replied',
-            updatedAt: new Date()
-          });
-          
-          return NextResponse.json({
-            success: true,
-            emailId: incomingEmail._id.toString(),
-            message: 'Incoming email saved and AI response auto-generated.',
-            aiResponseGenerated: true,
-            originalStage: originalEmailStage,
-            conversationCount: conversationCount,
-            isThirdReply: isThirdReply
-          });
-        } else {
-          console.log(`⚠️ Auto AI response generation failed: ${aiResponse.error}`);
-        }
-      } catch (aiError) {
-        console.error(`❌ Error auto-generating AI response:`, aiError);
-      }
-    }
+    // DO NOT AUTO-SEND - Let the cron job handle generating and saving draft responses
+    // Cron job will:
+    // 1. Fetch this email (status: unread)
+    // 2. Generate AI response
+    // 3. Save as DRAFT (not auto-send)
+    // 4. User reviews and clicks send in UI
     
     return NextResponse.json({
       success: true,
       emailId: incomingEmail._id.toString(),
-      message: 'Incoming email saved successfully.',
+      message: 'Incoming email saved. Cron job will generate draft response for user review.',
       isReplyToSequence: isReplyToSequence,
-      originalStage: originalEmailStage
+      originalStage: originalEmailStage,
+      conversationCount: conversationCount,
+      isThirdReply: isThirdReply,
+      status: incomingEmail.status
     });
     
   } catch (error: any) {

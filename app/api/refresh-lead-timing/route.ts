@@ -158,4 +158,4 @@ function convertTimingToMs(delay: number, unit: string): number {
   }
   console.log(`🔧 Result: ${ms}ms (${ms / 1000 / 60} minutes)`);
   return ms;
-} 
+}

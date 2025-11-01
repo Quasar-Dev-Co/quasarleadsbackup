@@ -80,10 +80,10 @@ const EmailTemplateSchema = new Schema<IEmailTemplate>({
   timestamps: true
 });
 
-// Create compound index for stage + userId to allow multiple users to have templates with the same stage
+// Create unique compound index for stage + userId to allow multiple users to have templates with the same stage
 // but prevent duplicate stages per user
-EmailTemplateSchema.index({ stage: 1, userId: 1 });
+EmailTemplateSchema.index({ stage: 1, userId: 1 }, { unique: true });
 
 const EmailTemplate = mongoose.models.EmailTemplate || mongoose.model<IEmailTemplate>('EmailTemplate', EmailTemplateSchema);
 
-export default EmailTemplate; 
+export default EmailTemplate;

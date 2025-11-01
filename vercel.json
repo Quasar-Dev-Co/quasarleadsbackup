@@ -22,7 +22,7 @@
     },
     {
       "path": "/api/cron/email-automation",
-      "schedule": "* * * * *"
+      "schedule": "*/5 * * * *"
     },
     {
       "path": "/api/cron/fetch-incoming-emails",
@@ -39,6 +39,10 @@
     {
       "path": "/api/cron/email-cleanup",
       "schedule": "* * * * *"
+    },
+    {
+      "path": "/api/cron/email-validation",
+      "schedule": "*/3 * * * *"
     }
   ]
 } 

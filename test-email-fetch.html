@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test Email Fetch</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+            background: #1a1a1a;
+            color: #fff;
+        }
+        button {
+            padding: 12px 24px;
+            margin: 10px 5px;
+            background: #667eea;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 16px;
+        }
+        button:hover {
+            background: #5568d3;
+        }
+        button:disabled {
+            background: #666;
+            cursor: not-allowed;
+        }
+        .result {
+            margin-top: 20px;
+            padding: 15px;
+            background: #2a2a2a;
+            border-radius: 8px;
+            white-space: pre-wrap;
+            overflow-x: auto;
+            max-height: 500px;
+            overflow-y: auto;
+        }
+        .success { color: #4ade80; }
+        .error { color: #ef4444; }
+        .warning { color: #fbbf24; }
+    </style>
+</head>
+<body>
+    <h1>🔧 Email Fetch Test Panel</h1>
+    <p>Use these buttons to manually trigger the email fetching and processing cron jobs.</p>
+    <div style="background: #2a2a2a; padding: 15px; border-radius: 8px; margin-bottom: 20px; border-left: 4px solid #4ade80;">
+        <h3 style="margin: 0 0 10px 0; color: #4ade80;">✅ SAFE MODE ENABLED</h3>
+        <p style="margin: 0; font-size: 14px;">AI responses are saved as <strong>DRAFT</strong> only. No emails will be sent automatically. You must manually review and approve each response in the UI.</p>
+    </div>
+    
+    <div>
+        <button onclick="fetchEmails()">📬 Fetch Incoming Emails from IMAP</button>
+        <button onclick="processEmails()">🤖 Generate AI Responses (Save as Draft)</button>
+        <button onclick="checkData()">📊 Check Database for Emails</button>
+    </div>
+    
+    <div id="result" class="result"></div>
+
+    <script>
+        const resultDiv = document.getElementById('result');
+        
+        function log(message, type = 'info') {
+            const timestamp = new Date().toLocaleTimeString();
+            const color = type === 'success' ? 'success' : type === 'error' ? 'error' : type === 'warning' ? 'warning' : '';
+            resultDiv.innerHTML += `<div class="${color}">[${timestamp}] ${message}</div>`;
+            resultDiv.scrollTop = resultDiv.scrollHeight;
+        }
+
+        async function fetchEmails() {
+            log('Starting email fetch from IMAP...', 'info');
+            const buttons = document.querySelectorAll('button');
+            buttons.forEach(btn => btn.disabled = true);
+            
+            try {
+                const response = await fetch('/api/cron/fetch-incoming-emails', {
+                    method: 'POST'
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    log('✅ Email fetch completed!', 'success');
+                    log(JSON.stringify(data, null, 2), 'success');
+                } else {
+                    log('❌ Email fetch failed:', 'error');
+                    log(JSON.stringify(data, null, 2), 'error');
+                }
+            } catch (error) {
+                log('❌ Error: ' + error.message, 'error');
+            } finally {
+                buttons.forEach(btn => btn.disabled = false);
+            }
+        }
+
+        async function processEmails() {
+            log('Starting email response processing...', 'info');
+            const buttons = document.querySelectorAll('button');
+            buttons.forEach(btn => btn.disabled = true);
+            
+            try {
+                const response = await fetch('/api/cron/process-email-responses', {
+                    method: 'POST'
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    log('✅ Email processing completed!', 'success');
+                    log(JSON.stringify(data, null, 2), 'success');
+                } else {
+                    log('❌ Email processing failed:', 'error');
+                    log(JSON.stringify(data, null, 2), 'error');
+                }
+            } catch (error) {
+                log('❌ Error: ' + error.message, 'error');
+            } finally {
+                buttons.forEach(btn => btn.disabled = false);
+            }
+        }
+
+        async function checkData() {
+            log('Checking database for emails...', 'info');
+            const buttons = document.querySelectorAll('button');
+            buttons.forEach(btn => btn.disabled = true);
+            
+            try {
+                const response = await fetch('/api/email-responses/incoming');
+                const data = await response.json();
+                
+                if (data.success) {
+                    log(`✅ Found ${data.emails?.length || 0} emails in database`, 'success');
+                    if (data.emails && data.emails.length > 0) {
+                        log('Email list:', 'info');
+                        data.emails.forEach((email, i) => {
+                            log(`${i+1}. ${email.leadName} (${email.leadEmail}) - ${email.subject} - Status: ${email.status}`, 'info');
+                        });
+                    } else {
+                        log('⚠️ No emails found in database. Try fetching first!', 'warning');
+                    }
+                } else {
+                    log('❌ Failed to check data:', 'error');
+                    log(JSON.stringify(data, null, 2), 'error');
+                }
+            } catch (error) {
+                log('❌ Error: ' + error.message, 'error');
+            } finally {
+                buttons.forEach(btn => btn.disabled = false);
+            }
+        }
+        
+        // Initial check on page load
+        log('Test panel loaded. Click buttons to test email fetching.', 'info');
+    </script>
+</body>
+</html>

@@ -8,17 +8,13 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { 
   Mail, 
   Send, 
   RefreshCw, 
-  Settings, 
   Bot, 
   MessageSquare, 
   Clock, 
@@ -26,126 +22,127 @@ import {
   AlertTriangle,
   Eye,
   Edit,
-  Trash2,
-  Plus,
   Sparkles,
-  Brain,
-  Zap,
-  X,
+  Building,
+  ArrowRight,
   Copy,
-  Reply,
-  Star,
-  Building
+  Save
 } from "lucide-react";
 import { toast } from "sonner";
 import { useEmailResponseTranslations } from "@/hooks/use-email-response-translations";
 import { auth } from "@/lib/auth";
 
 // Type definitions
-interface IncomingEmail {
-  id: string;
-  leadId: string;
-  leadName: string;
-  leadEmail: string;
-  leadCompany: string;
-  subject: string;
-  content: string;
-  receivedAt: string;
-  status: 'unread' | 'read' | 'responded' | 'pending_ai';
-  originalEmailId?: string; // Reference to the email they're replying to
-  sentiment: 'positive' | 'negative' | 'neutral' | 'interested' | 'not_interested';
-  isReply: boolean; // Whether this is a reply to our outgoing email
-  isRecent: boolean; // Whether this is from the last 20 minutes
-  threadId?: string; // Thread ID for email grouping
-  metadata?: {
-    originalEmailStage?: string; // Which stage of our email sequence this is replying to
-    isReplyToSequence?: boolean; // Whether this is a reply to our email sequence
+interface CombinedEmailData {
+  email: {
+    id: string;
+    leadId: string;
+    leadName: string;
+    leadEmail: string;
+    leadCompany: string;
+    subject: string;
+    content: string;
+    receivedAt: string;
+    status: 'unread' | 'pending_ai' | 'responded';
+    sentiment: string;
+    isReply: boolean;
+    conversationCount: number;
+    isThirdReply: boolean;
+    metadata?: any;
   };
+  aiResponse: {
+    id: string;
+    generatedSubject: string;
+    generatedContent: string;
+    status: 'draft' | 'sent' | 'failed';
+    reasoning: string;
+    responseType: string;
+    createdAt: string;
+    sentAt?: string;
+  } | null;
 }
 
-interface AIResponse {
-  id: string;
-  incomingEmailId: string;
-  generatedSubject: string;
-  generatedContent: string;
-  confidence: number;
-  reasoning: string;
-  status: 'draft' | 'approved' | 'sent' | 'rejected';
-  createdAt: string;
-  sentAt?: string;
-  responseType: 'interested' | 'objection_handling' | 'meeting_request' | 'pricing_inquiry' | 'general';
-}
-
-interface AISettings {
-  isEnabled: boolean;
-  autoSendThreshold: number; // Confidence threshold for auto-sending (0-100)
-  defaultTone: 'professional' | 'friendly' | 'casual' | 'formal';
-  includeCompanyInfo: boolean;
-  maxResponseLength: number;
-  customInstructions: string;
-  responsePrompt: string;
-  companyName: string;
-  senderName: string;
-  senderEmail: string;
-  signature: string;
-}
-
-// Add validation helpers above the component
-const isValidEmail = (email: string) => /\S+@\S+\.\S+/.test(email);
-
-export default function EmailResponses() {
+export default function EmailResponsesNew() {
   const { t } = useEmailResponseTranslations();
   
   // State management
-  const [activeTab, setActiveTab] = useState("inbox");
-  const [incomingEmails, setIncomingEmails] = useState<IncomingEmail[]>([]);
-  const [aiResponses, setAIResponses] = useState<AIResponse[]>([]);
-  const [selectedEmail, setSelectedEmail] = useState<IncomingEmail | null>(null);
-  const [selectedResponse, setSelectedResponse] = useState<AIResponse | null>(null);
+  const [emailData, setEmailData] = useState<CombinedEmailData[]>([]);
+  const [selectedItem, setSelectedItem] = useState<CombinedEmailData | null>(null);
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
-  const [generating, setGenerating] = useState(false);
   const [sending, setSending] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [generating, setGenerating] = useState(false);
+  const [showPreviewDialog, setShowPreviewDialog] = useState(false);
   
-  // Dialog states
-  const [showEmailPreview, setShowEmailPreview] = useState(false);
-  const [showResponseEditor, setShowResponseEditor] = useState(false);
-  
-  // AI Settings
-  const [aiSettings, setAISettings] = useState<AISettings>({
-    isEnabled: true,
-    autoSendThreshold: 85,
-    defaultTone: 'professional',
-    includeCompanyInfo: true,
-    maxResponseLength: 300,
-    customInstructions: 'Always be helpful and focus on booking meetings. Mention our AI-powered lead generation services when relevant.',
-    responsePrompt: `**CRITICAL DIRECTIVES: Failure to follow these rules will result in an error. This is not a suggestion.**\n\n1.  **SIGNATURE:** The response MUST end with **EXACTLY** this signature:\n    Warmly,\n    Team QuasarSEO\n\n2.  **NO PLACEHOLDERS:** You MUST NOT use placeholders like \`[Your Name]\` or \`[insert their concern]\` in your final output. You are to generate the content naturally based on the user's email.\n3.  **TONE:** The tone must be warm, human, and helpful. ABSOLUTELY NO sales pressure.\n\n---\n\n**Your Persona:** You are a calm, engaged entrepreneur who truly listens. Your goal is to establish a connection and gently guide them to schedule a casual Zoom meeting.\n\n**Response Structure (Follow this EXACTLY):**\n\n**1. Acknowledge with Genuine Attention:**\nShow empathy and understanding based on the client's email.\n\n**2. Ask an Open-Ended Follow-up Question:**\nInvite dialogue with a soft, open question.\n\n**3. Gently Suggest a Zoom Call (If appropriate):**\nOffer a low-pressure call and provide the booking link.\n*Rule:* When user asked for meeting then ,You have to suggest a call, ONLY send or mention this link: https://testqlagain.vercel.app/clientbooking dont asked for any date and time, just send the link and tell got to the link and book the meeting.\n\n**4. End with a Friendly, Open Tone:**\nLet them know they can reply at their convenience.\n\n---\n\n**PERFECT RESPONSE EXAMPLE (This is a model for tone and structure, not for copy-pasting):**\n\nHi [Client's Name],\n\nThanks so much for reaching out. I completely understand what you're looking for and how important it is to find the right path forward. It sounds like you're really thinking about [their specific concern, which you will identify] right now, and I’d love to help however I can.\n\nWhat has been the most important factor for you in this decision? I’d love to hear more about what’s on your mind.\n\nIf it feels right, maybe we can take a few minutes to look at this together. I’d be happy to jump on a quick Zoom call to brainstorm ideas and see what could work best for you. Here’s a link to book a time that works for you: https://testqlagain.vercel.app/clientbooking\n\nNo rush at all — feel free to reach out when it’s convenient for you. I’m looking forward to hearing from you soon.\n\nWarmly,\nTeam QuasarSEO\n\n---\n**FINAL CHECK: Before responding, verify you have followed all CRITICAL DIRECTIVES.**`,
-    companyName: 'QuasarSEO',
-    senderName: 'Team QuasarSEO',
-    senderEmail: 'info@quasarseo.nl',
-    signature: 'Warmly,\nTeam QuasarSEO'
-  });
+  // Editing state
+  const [editedSubject, setEditedSubject] = useState("");
+  const [editedContent, setEditedContent] = useState("");
+  const [isEditing, setIsEditing] = useState(false);
 
-  // Form states
-  const [editingResponse, setEditingResponse] = useState({
-    subject: '',
-    content: ''
-  });
+  // AI Settings state
+  const [aiSettings, setAiSettings] = useState<any>(null);
+  const [aiSettingsLoading, setAiSettingsLoading] = useState(false);
+  const [aiSettingsSaving, setAiSettingsSaving] = useState(false);
 
-  // Add validation state
-  const [validationErrors, setValidationErrors] = useState<{ [key: string]: string }>({});
-
-  // Credentials gating state
-  const [credentials, setCredentials] = useState<any>(null);
+  // Credentials gating
+  const [credsLoading, setCredsLoading] = useState(true);
   const [missingCreds, setMissingCreds] = useState<string[]>([]);
-  const [credsLoading, setCredsLoading] = useState<boolean>(true);
   const requiredCreds = [
     'IMAP_HOST','IMAP_PORT','IMAP_USER','IMAP_PASSWORD',
     'SMTP_HOST','SMTP_PORT','SMTP_USER','SMTP_PASSWORD',
     'OPENAI_API_KEY'
   ];
 
-  // Load credentials for current user
+  // Load AI settings
+  const loadAiSettings = async () => {
+    try {
+      setAiSettingsLoading(true);
+      const authHeader = auth.getAuthHeader();
+      const res = await fetch('/api/email-responses/settings', {
+        headers: authHeader ? { Authorization: authHeader } : undefined,
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setAiSettings(data.settings);
+      } else {
+        toast.error(`Failed to load AI settings: ${data.error}`);
+      }
+    } catch (error: any) {
+      toast.error(`Error loading AI settings: ${error.message}`);
+    } finally {
+      setAiSettingsLoading(false);
+    }
+  };
+
+  // Save AI settings
+  const saveAiSettings = async () => {
+    try {
+      setAiSettingsSaving(true);
+      const authHeader = auth.getAuthHeader();
+      const res = await fetch('/api/email-responses/settings', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(authHeader ? { Authorization: authHeader } : {}),
+        },
+        body: JSON.stringify(aiSettings),
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        toast.success('✅ AI settings saved successfully!');
+        loadAiSettings(); // Reload
+      } else {
+        toast.error(`Failed to save: ${data.error}`);
+      }
+    } catch (error: any) {
+      toast.error(`Error: ${error.message}`);
+    } finally {
+      setAiSettingsSaving(false);
+    }
+  };
+
+  // Load credentials
   useEffect(() => {
     (async () => {
       try {
@@ -156,318 +153,259 @@ export default function EmailResponses() {
         });
         const data = await res.json();
         if (res.ok && data.success) {
-          setCredentials(data.credentials || {});
           const missing = requiredCreds.filter((k) => !data.credentials || !data.credentials[k]);
           setMissingCreds(missing);
         } else {
+          console.error('API Error:', data.error);
+          toast.error(`Failed to load credentials: ${data.error || 'Unknown error'}`);
           setMissingCreds(requiredCreds);
         }
-      } catch {
+      } catch (error: any) {
+        console.error('Error loading credentials:', error);
+        toast.error(`Failed to load credentials: ${error.message || 'Network error'}`);
         setMissingCreds(requiredCreds);
       } finally {
         setCredsLoading(false);
       }
     })();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const credsOK = !credsLoading && missingCreds.length === 0;
 
-  // Load data only when credentials are present
+  // Load combined email data
   useEffect(() => {
     if (credsOK) {
-      loadIncomingEmails();
-      loadAIResponses();
-      loadAISettings();
+      loadEmailData();
+      loadAiSettings(); // Load AI settings too
     }
   }, [credsOK]);
 
-  // Load incoming emails from API
-  const loadIncomingEmails = async () => {
+  const loadEmailData = async () => {
     try {
       setLoading(true);
-      const response = await fetch('/api/email-responses/incoming', {
-        headers: (() => {
-          const h = auth.getAuthHeader();
-          return h ? { Authorization: h } : { 'Content-Type': 'application/json' } as any;
-        })()
+      const authHeader = auth.getAuthHeader();
+      const response = await fetch('/api/email-responses/combined', {
+        headers: authHeader ? { Authorization: authHeader } : {}
       });
       const data = await response.json();
       
       if (data.success) {
-        // Filter emails for:
-        // 1. Replied emails (isReply = true)
-        // 2. Emails from the last 20 minutes (isRecent = true)
-        // 3. Unread emails that need processing
-        const filteredEmails = (data.emails || []).filter((email: IncomingEmail) => {
-          // Always show unread emails
-          if (email.status === 'unread') return true;
-          
-          // Show recent emails (from last 20 minutes)
-          if (email.isRecent) return true;
-          
-          // Show replied emails
-          if (email.isReply) return true;
-          
-          // Show emails that haven't been responded to yet
-          if (email.status !== 'responded') return true;
-          
-          return false;
-        });
-
-        setIncomingEmails(filteredEmails);
-        console.log(`📧 Loaded ${filteredEmails.length} filtered emails (unread, recent, and replies)`);
+        setEmailData(data.data || []);
+        console.log(`📧 Loaded ${data.count} emails with responses`);
       } else {
-        toast.error(t('failedToLoadEmails'));
+        console.error('API Error:', data.error);
+        toast.error(`Failed to load email data: ${data.error || 'Unknown error'}`);
       }
-    } catch (error) {
-      console.error('Error loading incoming emails:', error);
-      toast.error(t('failedToLoadEmails'));
+    } catch (error: any) {
+      console.error('Error loading email data:', error);
+      toast.error(`Failed to load email data: ${error.message || 'Network error'}`);
     } finally {
       setLoading(false);
     }
   };
 
-  // Load AI responses from API
-  const loadAIResponses = async () => {
-    try {
-      const response = await fetch('/api/email-responses/ai-responses', {
-        headers: (() => {
-          const h = auth.getAuthHeader();
-          return h ? { Authorization: h } : {} as any;
-        })()
-      });
-      const data = await response.json();
-      
-      if (data.success) {
-        setAIResponses(data.responses || []);
-      }
-    } catch (error) {
-      console.error('Error loading AI responses:', error);
-    }
-  };
-
-  // Load AI settings
-  const loadAISettings = async () => {
-    try {
-      const response = await fetch('/api/email-responses/settings', {
-        headers: (() => {
-          const h = auth.getAuthHeader();
-          return h ? { Authorization: h } : { 'Content-Type': 'application/json' } as any;
-        })()
-      });
-      const data = await response.json();
-      
-      if (data.success && data.settings) {
-        setAISettings(prev => ({ ...prev, ...data.settings }));
-      }
-    } catch (error) {
-      console.error('Error loading AI settings:', error);
-    }
-  };
-
-  // Generate AI response for an email
-  const generateAIResponse = async (email: IncomingEmail) => {
+  // Generate AI response for email without response
+  const generateResponse = async (emailId: string) => {
     try {
       setGenerating(true);
-      toast.loading(`🤖 ${t('generatingResponse')}`, { duration: 10000 });
+      const loadingToast = toast.loading('🤖 Generating AI response...');
       
+      const authHeader = auth.getAuthHeader();
       const response = await fetch('/api/email-responses/generate', {
         method: 'POST',
-        headers: (() => {
-          const h = auth.getAuthHeader();
-          return { 'Content-Type': 'application/json', ...(h ? { Authorization: h } : {}) } as any;
-        })(),
-        body: JSON.stringify({
-          incomingEmailId: email.id,
-          leadInfo: {
-            name: email.leadName,
-            email: email.leadEmail,
-            company: email.leadCompany
-          },
-          emailContent: email.content,
-          emailSubject: email.subject,
-          aiSettings
-        })
+        headers: {
+          'Content-Type': 'application/json',
+          ...(authHeader ? { Authorization: authHeader } : {})
+        },
+        body: JSON.stringify({ incomingEmailId: emailId })
       });
 
       const data = await response.json();
       
+      // Dismiss loading toast
+      toast.dismiss(loadingToast);
+      
       if (data.success) {
-        toast.success(`🤖 ${t('responseGenerated')} (${data.response.confidence}% ${t('confidence').toLowerCase()})`);
-        setSelectedResponse(data.response);
-        setEditingResponse({
-          subject: data.response.generatedSubject,
-          content: data.response.generatedContent
-        });
-        setShowResponseEditor(true);
-        
-        // Refresh AI responses
-        loadAIResponses();
+        toast.success('✅ AI response generated!');
+        loadEmailData(); // Reload to get the new response
       } else {
-        throw new Error(data.error);
+        toast.error(`❌ Failed: ${data.error}`);
       }
     } catch (error: any) {
-      console.error('Error generating AI response:', error);
-              toast.error(`${t('failedToGenerateResponse')}: ${error.message}`);
+      toast.error(`❌ Error: ${error.message}`);
     } finally {
       setGenerating(false);
     }
   };
 
-  // Send AI response
-  const sendAIResponse = async (responseId: string) => {
+  // Send the AI response
+  const sendResponse = async () => {
+    if (!selectedItem?.aiResponse) return;
+    
     try {
       setSending(true);
-              toast.loading(`📧 ${t('sendingResponse')}`, { duration: 5000 });
+      const loadingToast = toast.loading('📧 Sending email...');
       
+      const authHeader = auth.getAuthHeader();
       const response = await fetch('/api/email-responses/send', {
         method: 'POST',
-        headers: (() => {
-          const h = auth.getAuthHeader();
-          return { 'Content-Type': 'application/json', ...(h ? { Authorization: h } : {}) } as any;
-        })(),
+        headers: {
+          'Content-Type': 'application/json',
+          ...(authHeader ? { Authorization: authHeader } : {})
+        },
         body: JSON.stringify({
-          responseId,
-          customSubject: editingResponse.subject,
-          customContent: editingResponse.content
+          responseId: selectedItem.aiResponse.id,
+          customSubject: editedSubject || selectedItem.aiResponse.generatedSubject,
+          customContent: editedContent || selectedItem.aiResponse.generatedContent
         })
       });
 
       const data = await response.json();
       
+      // Dismiss loading toast
+      toast.dismiss(loadingToast);
+      
       if (data.success) {
-        toast.success(`✅ ${t('responseSent')}`);
-        setShowResponseEditor(false);
-        
-        // Refresh data
-        loadIncomingEmails();
-        loadAIResponses();
+        toast.success('✅ Email sent successfully!');
+        setShowPreviewDialog(false);
+        loadEmailData(); // Reload data
       } else {
-        throw new Error(data.error);
+        toast.error(`❌ Failed to send: ${data.error}`);
       }
     } catch (error: any) {
-      console.error('Error sending AI response:', error);
-              toast.error(`${t('failedToSendResponse')}: ${error.message}`);
+      toast.error(`❌ Error: ${error.message}`);
     } finally {
       setSending(false);
     }
   };
 
-  // Save AI settings
-  const saveAISettings = async () => {
-    try {
-      const authHeader = auth.getAuthHeader();
-      const headers: any = { 'Content-Type': 'application/json' };
-      if (authHeader) {
-        headers.Authorization = authHeader;
-      }
+  // Open preview dialog
+  const openPreview = (item: CombinedEmailData) => {
+    setSelectedItem(item);
+    setEditedSubject(item.aiResponse?.generatedSubject || '');
+    setEditedContent(item.aiResponse?.generatedContent || '');
+    setIsEditing(false);
+    setShowPreviewDialog(true);
+  };
 
-      const response = await fetch('/api/email-responses/settings', {
+  // Save edited content without sending
+  const saveEdits = async () => {
+    if (!selectedItem?.aiResponse) return;
+    
+    try {
+      setSaving(true);
+      const loadingToast = toast.loading('💾 Saving changes...');
+      
+      const authHeader = auth.getAuthHeader();
+      const response = await fetch('/api/email-responses/update', {
         method: 'POST',
-        headers: headers,
-        body: JSON.stringify(aiSettings)
+        headers: {
+          'Content-Type': 'application/json',
+          ...(authHeader ? { Authorization: authHeader } : {}),
+        },
+        body: JSON.stringify({
+          responseId: selectedItem.aiResponse.id,
+          generatedSubject: editedSubject,
+          generatedContent: editedContent
+        })
       });
 
       const data = await response.json();
       
+      // Dismiss loading toast
+      toast.dismiss(loadingToast);
+      
       if (data.success) {
-        toast.success(`⚙️ ${t('settingsSaved')}`);
+        toast.success('✅ Changes saved successfully!');
+        loadEmailData(); // Reload data
       } else {
-        throw new Error(data.error);
+        toast.error(`❌ Failed to save: ${data.error}`);
       }
     } catch (error: any) {
-      console.error('Error saving AI settings:', error);
-              toast.error(`${t('failedToSaveSettings')}: ${error.message}`);
+      toast.error(`❌ Error: ${error.message}`);
+    } finally {
+      setSaving(false);
     }
   };
 
-  // Refresh all data
+  // Direct send without opening dialog
+  const directSend = async (item: CombinedEmailData) => {
+    if (!item.aiResponse) return;
+    
+    try {
+      setSending(true);
+      const loadingToast = toast.loading('📧 Sending email...');
+      
+      const authHeader = auth.getAuthHeader();
+      const response = await fetch('/api/email-responses/send', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(authHeader ? { Authorization: authHeader } : {}),
+        },
+        body: JSON.stringify({
+          responseId: item.aiResponse.id,
+          incomingEmailId: item.email.id
+        })
+      });
+
+      const data = await response.json();
+      
+      // Dismiss loading toast
+      toast.dismiss(loadingToast);
+      
+      if (data.success) {
+        toast.success('✅ Email sent successfully!');
+        loadEmailData(); // Reload data
+      } else {
+        toast.error(`❌ Failed to send: ${data.error}`);
+      }
+    } catch (error: any) {
+      toast.error(`❌ Error: ${error.message}`);
+    } finally {
+      setSending(false);
+    }
+  };
+
+  // Refresh data
   const handleRefresh = () => {
     setRefreshing(true);
-    Promise.all([
-      loadIncomingEmails(),
-      loadAIResponses()
-    ]).then(() => {
+    loadEmailData().then(() => {
       setRefreshing(false);
-              toast.success(`🔄 ${t('refresh')} ${t('completed')}`);
+      toast.success('🔄 Refreshed');
     });
   };
 
-  // Get status badge color
+  // Get status badge
   const getStatusBadge = (status: string) => {
     const variants = {
-      'unread': 'bg-blue-100 text-blue-800',
-      'read': 'bg-gray-100 text-gray-800', 
-      'responded': 'bg-green-100 text-green-800',
-      'pending_ai': 'bg-yellow-100 text-yellow-800'
+      'draft': 'bg-yellow-100 text-yellow-800',
+      'sent': 'bg-green-100 text-green-800',
+      'failed': 'bg-red-100 text-red-800',
+      'pending_ai': 'bg-blue-100 text-blue-800',
+      'unread': 'bg-orange-100 text-orange-800',
+      'responded': 'bg-green-100 text-green-800'
     };
     return variants[status as keyof typeof variants] || 'bg-gray-100 text-gray-800';
   };
 
-  // Get sentiment badge
-  const getSentimentBadge = (sentiment: string) => {
-    const variants = {
-      'positive': 'bg-green-100 text-green-800',
-      'interested': 'bg-blue-100 text-blue-800',
-      'neutral': 'bg-gray-100 text-gray-800',
-      'negative': 'bg-red-100 text-red-800',
-      'not_interested': 'bg-orange-100 text-orange-800'
-    };
-    return variants[sentiment as keyof typeof variants] || 'bg-gray-100 text-gray-800';
-  };
+  // Filter emails by tab
+  const filteredData = emailData.filter(item => {
+    // Pending tab: has draft response
+    // Sent tab: has sent response
+    // All tab: everything
+    return true; // We'll filter in TabsContent
+  });
 
-  // Filter emails by status
-  const getFilteredEmails = () => {
-    // First apply the tab filter
-    let filtered = [...incomingEmails];
-    
-    switch (activeTab) {
-      case 'unread':
-        filtered = filtered.filter(email => email.status === 'unread');
-        break;
-      case 'pending':
-        filtered = filtered.filter(email => email.status === 'pending_ai');
-        break;
-      case 'responded':
-        filtered = filtered.filter(email => email.status === 'responded');
-        break;
-    }
-
-    // Sort by date, newest first
-    filtered.sort((a, b) => new Date(b.receivedAt).getTime() - new Date(a.receivedAt).getTime());
-    
-    return filtered;
-  };
-
-  const filteredEmails = getFilteredEmails();
-
-  // Validation logic
-  const validateSettings = (settings: AISettings) => {
-    const errors: { [key: string]: string } = {};
-    if (!settings.companyName) errors.companyName = 'Company name is required.';
-    if (!settings.senderName) errors.senderName = 'Sender name is required.';
-    if (!settings.senderEmail) errors.senderEmail = 'Sender email is required.';
-    else if (!isValidEmail(settings.senderEmail)) errors.senderEmail = 'Invalid email address.';
-    if (settings.maxResponseLength < 50 || settings.maxResponseLength > 1000) errors.maxResponseLength = 'Must be between 50 and 1000.';
-    if (settings.autoSendThreshold < 0 || settings.autoSendThreshold > 100) errors.autoSendThreshold = 'Must be between 0 and 100.';
-    if (!settings.responsePrompt) errors.responsePrompt = 'Prompt is required.';
-    if (!settings.signature) errors.signature = 'Signature is required.';
-    return errors;
-  };
-
-  // Validate on change
-  useEffect(() => {
-    setValidationErrors(validateSettings(aiSettings));
-  }, [aiSettings]);
-
-  // Compute isValid
-  const isValid = Object.keys(validationErrors).length === 0;
+  const newEmailCount = emailData.filter(item => !item.aiResponse || item.email.status === 'unread').length;
+  const pendingCount = emailData.filter(item => item.aiResponse?.status === 'draft').length;
+  const sentCount = emailData.filter(item => item.aiResponse?.status === 'sent').length;
+  const unreadCount = emailData.filter(item => item.email.status === 'unread').length;
 
   if (credsLoading) {
     return (
       <div className="flex items-center justify-center min-h-[40vh] text-zinc-400">
-        <RefreshCw className="h-6 w-6 animate-spin mr-2" /> Loading email response configuration...
+        <RefreshCw className="h-6 w-6 animate-spin mr-2" /> Loading...
       </div>
     );
   }
@@ -475,21 +413,21 @@ export default function EmailResponses() {
   if (!credsOK) {
     return (
       <div className="space-y-8 p-6">
-        <SectionHeader title="Email Responses" description="Manage and respond to incoming emails" />
+        <SectionHeader title="Email Responses" description="Manage email responses" />
         <Card className="border-red-300 bg-red-50">
           <CardHeader>
             <CardTitle className="text-red-700 flex items-center gap-2">
-              <AlertTriangle className="h-5 w-5" /> Email Responses Disabled
+              <AlertTriangle className="h-5 w-5" /> Missing Credentials
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-3 text-sm text-red-800">
-            <p>Missing required credentials. Please add the following in Account Settings → Credentials:</p>
+            <p>Missing required credentials:</p>
             <ul className="list-disc ml-6">
               {missingCreds.map((k) => (<li key={k}>{k}</li>))}
             </ul>
-            <div className="pt-2">
-              <Button onClick={() => window.location.assign('/account-settings')}>Go to Credentials</Button>
-            </div>
+            <Button onClick={() => window.location.assign('/account-settings')}>
+              Go to Credentials
+            </Button>
           </CardContent>
         </Card>
       </div>
@@ -498,33 +436,30 @@ export default function EmailResponses() {
 
   return (
     <div className="space-y-8 p-6">
-      {/* Header Section */}
+      {/* Header */}
       <div className="flex justify-between items-start">
         <SectionHeader
-          title={t('emailResponseManager')}
-          description={t('emailResponseManagerDescription')}
+          title="📧 Email Response Manager"
+          description="Review AI-generated responses and send emails"
         />
-        <div className="flex gap-2">
-          <Button
-            variant="outline"
-            size="icon"
-            onClick={handleRefresh}
-            disabled={refreshing}
-            title={t('refresh')}
-          >
-            <RefreshCw className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />
-          </Button>
-        </div>
+        <Button
+          variant="outline"
+          size="icon"
+          onClick={handleRefresh}
+          disabled={refreshing}
+        >
+          <RefreshCw className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />
+        </Button>
       </div>
 
-      {/* Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+      {/* Stats */}
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         <Card className="bg-zinc-900/50 border-zinc-700">
           <CardContent className="pt-4">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-xs text-zinc-400">{t('totalEmails')}</p>
-                <p className="text-2xl font-bold text-zinc-200">{incomingEmails.length}</p>
+                <p className="text-xs text-zinc-400">New Email</p>
+                <p className="text-2xl font-bold text-zinc-200">{newEmailCount}</p>
               </div>
               <Mail className="h-8 w-8 text-blue-500" />
             </div>
@@ -535,22 +470,8 @@ export default function EmailResponses() {
           <CardContent className="pt-4">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-xs text-zinc-400">{t('unreadEmails')}</p>
-                <p className="text-2xl font-bold text-zinc-200">
-                  {incomingEmails.filter(e => e.status === 'unread').length}
-                </p>
-              </div>
-              <MessageSquare className="h-8 w-8 text-orange-500" />
-            </div>
-          </CardContent>
-        </Card>
-        
-        <Card className="bg-zinc-900/50 border-zinc-700">
-          <CardContent className="pt-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-xs text-zinc-400">{t('aiGeneratedResponses')}</p>
-                <p className="text-2xl font-bold text-zinc-200">{aiResponses.length}</p>
+                <p className="text-xs text-zinc-400">Ready</p>
+                <p className="text-2xl font-bold text-zinc-200">{pendingCount}</p>
               </div>
               <Bot className="h-8 w-8 text-purple-500" />
             </div>
@@ -561,10 +482,8 @@ export default function EmailResponses() {
           <CardContent className="pt-4">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-xs text-zinc-400">{t('respondedEmails')}</p>
-                <p className="text-2xl font-bold text-zinc-200">
-                  {incomingEmails.filter(e => e.status === 'responded').length}
-                </p>
+                <p className="text-xs text-zinc-400">Sent</p>
+                <p className="text-2xl font-bold text-zinc-200">{sentCount}</p>
               </div>
               <CheckCircle className="h-8 w-8 text-green-500" />
             </div>
@@ -575,12 +494,10 @@ export default function EmailResponses() {
           <CardContent className="pt-4">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-xs text-zinc-400">Sequence Replies</p>
-                <p className="text-2xl font-bold text-zinc-200">
-                  {incomingEmails.filter(e => e.metadata?.isReplyToSequence).length}
-                </p>
+                <p className="text-xs text-zinc-400">All</p>
+                <p className="text-2xl font-bold text-zinc-200">{emailData.length}</p>
               </div>
-              <Sparkles className="h-8 w-8 text-green-500" />
+              <Mail className="h-8 w-8 text-zinc-500" />
             </div>
           </CardContent>
         </Card>
@@ -589,326 +506,611 @@ export default function EmailResponses() {
       {/* Main Content */}
       <Card className="bg-zinc-900/50 border-zinc-700">
         <CardContent className="p-6">
-          <Tabs value={activeTab} onValueChange={setActiveTab}>
+          <Tabs defaultValue="new">
             <TabsList className="grid w-full grid-cols-4">
-              <TabsTrigger value="inbox">{t('inbox')}</TabsTrigger>
-              <TabsTrigger value="unread">{t('unread')}</TabsTrigger>
-              <TabsTrigger value="pending">{t('pendingAI')}</TabsTrigger>
-              <TabsTrigger value="responded">{t('responded')}</TabsTrigger>
+              <TabsTrigger value="new">
+                New Email ({newEmailCount})
+              </TabsTrigger>
+              <TabsTrigger value="ready">
+                Ready ({pendingCount})
+              </TabsTrigger>
+              <TabsTrigger value="sent">
+                Sent ({sentCount})
+              </TabsTrigger>
+              <TabsTrigger value="all">
+                All ({emailData.length})
+              </TabsTrigger>
             </TabsList>
 
-            <TabsContent value={activeTab} className="mt-6">
+            {/* New Email Tab */}
+            <TabsContent value="new" className="mt-6">
               {loading ? (
                 <div className="flex items-center justify-center py-12">
                   <RefreshCw className="h-8 w-8 animate-spin text-zinc-400" />
-                  <span className="ml-2 text-zinc-400">{t('loadingEmails')}</span>
-                </div>
-              ) : filteredEmails.length === 0 ? (
-                <div className="text-center py-12">
-                  <Mail className="h-16 w-16 text-zinc-400 mx-auto mb-4" />
-                  <p className="text-zinc-400 text-lg">{t('noEmailsFound')}</p>
-                  <p className="text-zinc-500 text-sm">{t('emailResponseManagerDescription')}</p>
                 </div>
               ) : (
                 <div className="space-y-4">
-                  {filteredEmails.map((email) => (
-                    <Card key={email.id} className="bg-zinc-800/50 border-zinc-600 hover:bg-zinc-800/70 transition-colors">
-                      <CardContent className="p-4">
-                        <div className="flex items-start justify-between">
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-2 mb-2">
-                              <h3 className="font-medium text-zinc-200 truncate">
-                                {email.leadName} ({email.leadCompany})
-                              </h3>
-                              <Badge className={getStatusBadge(email.status)}>
-                                {email.status.replace('_', ' ')}
-                              </Badge>
-                              <Badge className={getSentimentBadge(email.sentiment)}>
-                                {email.sentiment.replace('_', ' ')}
-                              </Badge>
-                              {email.metadata?.isReplyToSequence && (
-                                <Badge className="bg-green-600 hover:bg-green-700 text-white">
-                                  <Sparkles className="h-3 w-3 mr-1" />
-                                  Sequence Reply
-                                </Badge>
-                              )}
-                              {email.metadata?.originalEmailStage && (
-                                <Badge className="bg-blue-600 hover:bg-blue-700 text-white">
-                                  {email.metadata.originalEmailStage.replace('_', ' ')}
-                                </Badge>
-                              )}
-                              {(email as any).conversationCount && (
-                                <Badge className={`${(email as any).conversationCount >= 3 ? 'bg-red-600 hover:bg-red-700' : 'bg-yellow-600 hover:bg-yellow-700'} text-white`}>
-                                  Reply #{(email as any).conversationCount}
-                                </Badge>
-                              )}
-                              {(email as any).isThirdReply && (
-                                <Badge className="bg-orange-600 hover:bg-orange-700 text-white">
-                                  <MessageSquare className="h-3 w-3 mr-1" />
-                                  Dutch Template
-                                </Badge>
-                              )}
-                            </div>
-                            <p className="text-sm text-zinc-300 font-medium mb-1">
-                              {t('subject')}: {email.subject}
-                            </p>
-                            <p className="text-sm text-zinc-400 line-clamp-2">
-                              {email.content}
-                            </p>
-                            <div className="flex items-center gap-4 mt-2 text-xs text-zinc-500">
-                              <span className="flex items-center gap-1">
-                                <Clock className="h-3 w-3" />
-                                {new Date(email.receivedAt).toLocaleDateString()}
-                              </span>
-                              <span>{email.leadEmail}</span>
-                            </div>
-                          </div>
-                          <div className="flex items-center gap-2 ml-4">
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => {
-                                setSelectedEmail(email);
-                                setShowEmailPreview(true);
-                              }}
-                            >
-                              <Eye className="h-4 w-4" />
-                            </Button>
-                            {email.status !== 'responded' && !(email as any).isThirdReply && (
-                              <Button
-                                size="sm"
-                                onClick={() => generateAIResponse(email)}
-                                disabled={generating}
-                                className="bg-purple-600 hover:bg-purple-700 text-white"
-                              >
-                                {generating ? (
-                                  <RefreshCw className="h-4 w-4 animate-spin" />
-                                ) : (
-                                  <>
-                                    <Bot className="h-4 w-4 mr-1" />
-                                    {t('generateResponse')}
-                                  </>
-                                )}
-                              </Button>
-                            )}
-                            {(email as any).isThirdReply && (
-                              <Badge className="bg-orange-600 text-white px-3 py-1">
-                                <MessageSquare className="h-3 w-3 mr-1" />
-                                Auto Dutch Template
-                              </Badge>
-                            )}
-                          </div>
-                        </div>
-                      </CardContent>
-                    </Card>
-                  ))}
+                  {emailData
+                    .filter(item => !item.aiResponse || item.email.status === 'unread')
+                    .map((item) => (
+                      <EmailResponseCard
+                        key={item.email.id}
+                        item={item}
+                        onView={openPreview}
+                        onGenerate={generateResponse}
+                        onDirectSend={directSend}
+                        generating={generating}
+                        sending={sending}
+                      />
+                    ))}
+                  {emailData.filter(item => !item.aiResponse || item.email.status === 'unread').length === 0 && (
+                    <div className="text-center py-12 text-zinc-400">
+                      <CheckCircle className="h-12 w-12 mx-auto mb-3 opacity-50" />
+                      <p>No new emails</p>
+                    </div>
+                  )}
                 </div>
               )}
+            </TabsContent>
+
+            {/* Ready to Send Tab */}
+            <TabsContent value="ready" className="mt-6">
+              {loading ? (
+                <div className="flex items-center justify-center py-12">
+                  <RefreshCw className="h-8 w-8 animate-spin text-zinc-400" />
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {emailData
+                    .filter(item => item.aiResponse?.status === 'draft')
+                    .map((item) => (
+                      <EmailResponseCard
+                        key={item.email.id}
+                        item={item}
+                        onView={openPreview}
+                        onGenerate={generateResponse}
+                        onDirectSend={directSend}
+                        generating={generating}
+                        sending={sending}
+                      />
+                    ))}
+                  {emailData.filter(item => item.aiResponse?.status === 'draft').length === 0 && (
+                    <div className="text-center py-12">
+                      <CheckCircle className="h-16 w-16 text-zinc-400 mx-auto mb-4" />
+                      <p className="text-zinc-400">No emails ready to send</p>
+                    </div>
+                  )}
+                </div>
+              )}
+            </TabsContent>
+
+            {/* Sent Tab */}
+            <TabsContent value="sent" className="mt-6">
+              <div className="space-y-4">
+                {emailData
+                  .filter(item => item.aiResponse?.status === 'sent')
+                  .map((item) => (
+                    <EmailResponseCard
+                      key={item.email.id}
+                      item={item}
+                      onView={openPreview}
+                      onGenerate={generateResponse}
+                      onDirectSend={directSend}
+                      generating={generating}
+                      sending={sending}
+                    />
+                  ))}
+                {emailData.filter(item => item.aiResponse?.status === 'sent').length === 0 && (
+                  <div className="text-center py-12">
+                    <Mail className="h-16 w-16 text-zinc-400 mx-auto mb-4" />
+                    <p className="text-zinc-400">No sent emails</p>
+                  </div>
+                )}
+              </div>
+            </TabsContent>
+
+            {/* All Tab */}
+            <TabsContent value="all" className="mt-6">
+              <div className="space-y-4">
+                {emailData.map((item) => (
+                  <EmailResponseCard
+                    key={item.email.id}
+                    item={item}
+                    onView={openPreview}
+                    onGenerate={generateResponse}
+                    onDirectSend={directSend}
+                    generating={generating}
+                    sending={sending}
+                  />
+                ))}
+              </div>
             </TabsContent>
           </Tabs>
         </CardContent>
       </Card>
 
-      {/* Email Preview Dialog */}
-      <Dialog open={showEmailPreview} onOpenChange={setShowEmailPreview}>
-        <DialogContent className="min-w-[70vw] max-w-[1200px] max-h-[90vh] bg-zinc-900 border-zinc-700 flex flex-col">
-          <DialogHeader className="border-b border-zinc-700 pb-4 flex-shrink-0">
+      {/* AI Settings Section - Separate card below */}
+      <Card className="bg-zinc-900/50 border-zinc-700">
+        <CardHeader>
+          <CardTitle className="text-zinc-200 flex items-center gap-2">
+            <Sparkles className="h-6 w-6 text-purple-400" />
+            AI Settings
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="mt-6">
+              {aiSettingsLoading ? (
+                <div className="flex items-center justify-center py-12">
+                  <RefreshCw className="h-8 w-8 animate-spin text-zinc-400" />
+                </div>
+              ) : aiSettings ? (
+                <div className="space-y-6">
+                  <div className="bg-zinc-800/30 rounded-lg p-4 border border-zinc-700">
+                    <h3 className="text-lg font-semibold text-zinc-200 mb-2 flex items-center gap-2">
+                      <Sparkles className="h-5 w-5 text-purple-400" />
+                      AI Response Configuration
+                    </h3>
+                    <p className="text-sm text-zinc-400">
+                      Configure how AI generates email responses. All responses are saved as drafts for your review.
+                    </p>
+                  </div>
+
+                  {/* Company Information */}
+                  <Card className="bg-zinc-800/50 border-zinc-700">
+                    <CardHeader>
+                      <CardTitle className="text-zinc-200 flex items-center gap-2">
+                        <Building className="h-5 w-5" />
+                        Company Information
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                          <Label className="text-zinc-300">Company Name</Label>
+                          <Input
+                            value={aiSettings.companyName || ''}
+                            onChange={(e) => setAiSettings({ ...aiSettings, companyName: e.target.value })}
+                            className="bg-zinc-900 border-zinc-600 text-zinc-200 mt-1"
+                            placeholder="QuasarSEO"
+                          />
+                        </div>
+                        <div>
+                          <Label className="text-zinc-300">Sender Name</Label>
+                          <Input
+                            value={aiSettings.senderName || ''}
+                            onChange={(e) => setAiSettings({ ...aiSettings, senderName: e.target.value })}
+                            className="bg-zinc-900 border-zinc-600 text-zinc-200 mt-1"
+                            placeholder="Team QuasarSEO"
+                          />
+                        </div>
+                      </div>
+                      <div>
+                        <Label className="text-zinc-300">Sender Email</Label>
+                        <Input
+                          type="email"
+                          value={aiSettings.senderEmail || ''}
+                          onChange={(e) => setAiSettings({ ...aiSettings, senderEmail: e.target.value })}
+                          className="bg-zinc-900 border-zinc-600 text-zinc-200 mt-1"
+                          placeholder="info@quasarseo.nl"
+                        />
+                      </div>
+                      <div>
+                        <Label className="text-zinc-300">Email Signature</Label>
+                        <Textarea
+                          value={aiSettings.signature || ''}
+                          onChange={(e) => setAiSettings({ ...aiSettings, signature: e.target.value })}
+                          className="bg-zinc-900 border-zinc-600 text-zinc-200 mt-1 min-h-[80px]"
+                          placeholder="Warmly,\nTeam QuasarSEO"
+                        />
+                        <p className="text-xs text-zinc-400 mt-1">
+                          This signature will be appended to all AI-generated responses.
+                        </p>
+                      </div>
+                    </CardContent>
+                  </Card>
+
+                  {/* AI Behavior Settings */}
+                  <Card className="bg-zinc-800/50 border-zinc-700">
+                    <CardHeader>
+                      <CardTitle className="text-zinc-200 flex items-center gap-2">
+                        <Bot className="h-5 w-5" />
+                        AI Behavior Settings
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <div>
+                          <Label className="text-zinc-300">Tone</Label>
+                          <select
+                            value={aiSettings.defaultTone || 'professional'}
+                            onChange={(e) => setAiSettings({ ...aiSettings, defaultTone: e.target.value })}
+                            className="w-full mt-1 bg-zinc-900 border border-zinc-600 text-zinc-200 rounded-md px-3 py-2"
+                          >
+                            <option value="professional">Professional</option>
+                            <option value="friendly">Friendly</option>
+                            <option value="casual">Casual</option>
+                            <option value="formal">Formal</option>
+                          </select>
+                        </div>
+                        <div>
+                          <Label className="text-zinc-300">Max Response Length (words)</Label>
+                          <Input
+                            type="number"
+                            min="50"
+                            max="1000"
+                            value={aiSettings.maxResponseLength || 300}
+                            onChange={(e) => setAiSettings({ ...aiSettings, maxResponseLength: parseInt(e.target.value) || 300 })}
+                            className="bg-zinc-900 border-zinc-600 text-zinc-200 mt-1"
+                          />
+                        </div>
+                        <div>
+                          <Label className="text-zinc-300">Auto-Send Threshold (%)</Label>
+                          <Input
+                            type="number"
+                            min="0"
+                            max="100"
+                            value={aiSettings.autoSendThreshold || 85}
+                            onChange={(e) => setAiSettings({ ...aiSettings, autoSendThreshold: parseInt(e.target.value) || 85 })}
+                            className="bg-zinc-900 border-zinc-600 text-zinc-200 mt-1"
+                            disabled
+                          />
+                          <p className="text-xs text-zinc-400 mt-1">
+                            🔒 Auto-send is disabled. All emails saved as drafts.
+                          </p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="checkbox"
+                          checked={aiSettings.isEnabled !== false}
+                          onChange={(e) => setAiSettings({ ...aiSettings, isEnabled: e.target.checked })}
+                          className="h-4 w-4 rounded border-zinc-600 bg-zinc-900 text-purple-500"
+                        />
+                        <Label className="text-zinc-300 cursor-pointer">
+                          Enable AI Response Generation
+                        </Label>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="checkbox"
+                          checked={aiSettings.includeCompanyInfo !== false}
+                          onChange={(e) => setAiSettings({ ...aiSettings, includeCompanyInfo: e.target.checked })}
+                          className="h-4 w-4 rounded border-zinc-600 bg-zinc-900 text-purple-500"
+                        />
+                        <Label className="text-zinc-300 cursor-pointer">
+                          Include Company Information in Responses
+                        </Label>
+                      </div>
+                    </CardContent>
+                  </Card>
+
+                  {/* AI Prompt Configuration */}
+                  <Card className="bg-zinc-800/50 border-zinc-700">
+                    <CardHeader>
+                      <CardTitle className="text-zinc-200 flex items-center gap-2">
+                        <MessageSquare className="h-5 w-5" />
+                        AI Prompt Configuration
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                      <div>
+                        <Label className="text-zinc-300">Response Prompt Template</Label>
+                        <Textarea
+                          value={aiSettings.responsePrompt || ''}
+                          onChange={(e) => setAiSettings({ ...aiSettings, responsePrompt: e.target.value })}
+                          className="bg-zinc-900 border-zinc-600 text-zinc-200 mt-1 min-h-[300px] font-mono text-sm"
+                          placeholder="Enter the AI prompt template..."
+                        />
+                        <p className="text-xs text-zinc-400 mt-1">
+                          This is the main instruction template for AI to generate responses. Be specific about tone, structure, and requirements.
+                        </p>
+                      </div>
+                      <div>
+                        <Label className="text-zinc-300">Custom Instructions (Optional)</Label>
+                        <Textarea
+                          value={aiSettings.customInstructions || ''}
+                          onChange={(e) => setAiSettings({ ...aiSettings, customInstructions: e.target.value })}
+                          className="bg-zinc-900 border-zinc-600 text-zinc-200 mt-1 min-h-[100px]"
+                          placeholder="Add any additional custom instructions..."
+                        />
+                        <p className="text-xs text-zinc-400 mt-1">
+                          Optional additional instructions that will be appended to the main prompt.
+                        </p>
+                      </div>
+                    </CardContent>
+                  </Card>
+
+                  {/* Save Button */}
+                  <div className="flex justify-end">
+                    <Button
+                      onClick={saveAiSettings}
+                      disabled={aiSettingsSaving}
+                      className="bg-purple-600 hover:bg-purple-700 text-white"
+                    >
+                      {aiSettingsSaving ? (
+                        <>
+                          <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                          Saving...
+                        </>
+                      ) : (
+                        <>
+                          <CheckCircle className="h-4 w-4 mr-2" />
+                          Save AI Settings
+                        </>
+                      )}
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <div className="text-center py-12 text-zinc-400">
+                  <p>Failed to load AI settings</p>
+                  <Button onClick={loadAiSettings} variant="outline" className="mt-4">
+                    <RefreshCw className="h-4 w-4 mr-2" />
+                    Retry
+                  </Button>
+                </div>
+              )}
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Preview/Send Dialog - Gmail Style */}
+      <Dialog open={showPreviewDialog} onOpenChange={setShowPreviewDialog}>
+        <DialogContent className="!w-[90vw] !h-[95vh] !max-w-[90vw] !max-h-[95vh] bg-zinc-900 border-zinc-700 flex flex-col p-0" style={{ width: '90vw', height: '95vh', maxWidth: '90vw', maxHeight: '95vh' }}>
+          <DialogHeader className="px-6 py-4 border-b border-zinc-700 flex-shrink-0">
             <DialogTitle className="text-zinc-200 flex items-center gap-2">
-              <Mail className="h-5 w-5" />
-              {t('emailPreview')}
+              <Eye className="h-5 w-5" />
+              Review Emails - Gmail Style
             </DialogTitle>
             <DialogDescription className="text-zinc-400">
-              {t('emailPreview')}
+              Compare the incoming email with AI-generated response side by side
             </DialogDescription>
           </DialogHeader>
           
-          {selectedEmail && (
-            <div className="flex flex-col flex-1 min-h-0">
-              {/* Email Header */}
-              <div className="bg-zinc-800/50 p-6 border-b border-zinc-700 flex-shrink-0">
-                <div className="flex items-start justify-between mb-4">
-                  <div className="flex-1">
-                    <div className="flex items-center gap-3 mb-2">
-                      <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center">
-                        <span className="text-white font-semibold text-sm">
-                          {selectedEmail.leadName.charAt(0).toUpperCase()}
-                        </span>
+          {selectedItem && (
+            <div className="flex-1 overflow-hidden px-6 py-4">
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 h-full">
+                {/* LEFT: Incoming Email - Gmail Style */}
+                <div className="bg-white rounded-lg shadow-xl overflow-hidden flex flex-col h-full">
+                  {/* Gmail Header */}
+                  <div className="bg-[#f5f5f5] border-b border-gray-300 px-4 py-3 flex-shrink-0">
+                    <div className="flex items-center gap-2">
+                      <Mail className="h-4 w-4 text-gray-600" />
+                      <span className="text-sm font-medium text-gray-700">Incoming Email</span>
+                    </div>
+                  </div>
+                  
+                  {/* Gmail Email Header */}
+                  <div className="bg-white p-5 border-b border-gray-200 flex-shrink-0">
+                    <h2 className="text-2xl font-normal text-gray-900 mb-3">
+                      {selectedItem.email.subject}
+                    </h2>
+                    
+                    <div className="flex items-start gap-3">
+                      <div className="w-12 h-12 rounded-full bg-blue-500 flex items-center justify-center text-white font-semibold text-base flex-shrink-0">
+                        {selectedItem.email.leadName.charAt(0).toUpperCase()}
                       </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2">
+                          <span className="font-medium text-gray-900 text-base">
+                            {selectedItem.email.leadName}
+                          </span>
+                          <span className="text-gray-500 text-sm">
+                            &lt;{selectedItem.email.leadEmail}&gt;
+                          </span>
+                        </div>
+                        <div className="text-sm text-gray-500 mt-1">
+                          to me
+                        </div>
+                        <div className="text-sm text-gray-400 mt-1">
+                          {new Date(selectedItem.email.receivedAt).toLocaleString('en-US', {
+                            month: 'short',
+                            day: 'numeric',
+                            year: 'numeric',
+                            hour: 'numeric',
+                            minute: '2-digit',
+                            hour12: true
+                          })}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                  
+                  {/* Gmail Email Body */}
+                  <div className="p-6 bg-white overflow-y-auto flex-1">
+                    <div className="text-base text-gray-900 leading-relaxed">
+                      {(() => {
+                        const content = selectedItem.email.content;
+                        // Check if email contains quoted text (starts with > or contains "wrote:")
+                        const hasQuotedText = content.includes('\n>') || content.includes('wrote:');
+                        
+                        if (hasQuotedText) {
+                          // Split by common quote indicators
+                          const parts = content.split(/(?=On .+? wrote:)/);
+                          
+                          return (
+                            <>
+                              {parts[0] && parts[0].trim() && (
+                                <div className="mb-6">
+                                  <div className="inline-flex items-center gap-2 bg-green-100 text-green-800 text-sm font-semibold px-3 py-1.5 rounded-full mb-3">
+                                    <span className="text-lg">📝</span>
+                                    User's Reply
+                                  </div>
+                                  <div className="bg-gradient-to-r from-green-50 to-green-50/30 border-l-4 border-green-500 p-5 rounded-lg shadow-sm">
+                                    <p className="text-gray-900 whitespace-pre-wrap">{parts[0].trim()}</p>
+                                  </div>
+                                </div>
+                              )}
+                              {parts[1] && (
+                                <div>
+                                  <div className="inline-flex items-center gap-2 bg-blue-100 text-blue-800 text-sm font-semibold px-3 py-1.5 rounded-full mb-3">
+                                    <span className="text-lg">📧</span>
+                                    Quoted Original Email (Your Email)
+                                  </div>
+                                  <div className="bg-gradient-to-r from-gray-50 to-gray-50/30 border-l-4 border-gray-400 p-5 rounded-lg shadow-sm">
+                                    <div className="text-gray-700 space-y-2">
+                                      {parts[1]
+                                        .split('\n')
+                                        .map((line, idx) => {
+                                          // Remove leading > and trim
+                                          const cleanLine = line.replace(/^>\s*/, '').trim();
+                                          // Skip empty lines
+                                          if (!cleanLine) return <div key={idx} className="h-2"></div>;
+                                          return (
+                                            <p key={idx} className="leading-relaxed">
+                                              {cleanLine}
+                                            </p>
+                                          );
+                                        })}
+                                    </div>
+                                  </div>
+                                </div>
+                              )}
+                            </>
+                          );
+                        }
+                        
+                        // No quoted text, show as is
+                        return <p className="whitespace-pre-wrap">{content}</p>;
+                      })()}
+                    </div>
+                  </div>
+                </div>
+
+              {/* RIGHT: AI Response - Gmail Style */}
+              {selectedItem.aiResponse && (
+                <div className="bg-white rounded-lg shadow-xl overflow-hidden flex flex-col h-full">
+                  {/* Gmail Header */}
+                  <div className="bg-[#f5f5f5] border-b border-gray-300 px-4 py-3 flex-shrink-0">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <Bot className="h-4 w-4 text-purple-600" />
+                        <span className="text-sm font-medium text-gray-700">AI Response</span>
+                        <Badge className="bg-yellow-100 text-yellow-800 text-xs">Draft</Badge>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        {!isEditing && (
+                          <Button
+                            size="sm"
+                            onClick={saveEdits}
+                            disabled={saving}
+                            className="bg-green-600 hover:bg-green-700 text-white font-semibold border-2 border-green-700"
+                          >
+                            {saving ? (
+                              <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                            ) : (
+                              <Save className="h-4 w-4 mr-2" />
+                            )}
+                            {saving ? 'Saving...' : 'Save'}
+                          </Button>
+                        )}
+                        <Button
+                          size="sm"
+                          onClick={() => setIsEditing(!isEditing)}
+                          className="bg-purple-600 hover:bg-purple-700 text-white font-semibold border-2 border-purple-700"
+                        >
+                          <Edit className="h-4 w-4 mr-2" />
+                          {isEditing ? 'Preview' : 'Edit'}
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                  
+                  {isEditing ? (
+                    <div className="p-5 space-y-4 flex-1 overflow-y-auto bg-gray-50">
                       <div>
-                        <h3 className="text-lg font-semibold text-zinc-200">
-                          {selectedEmail.leadName}
-                        </h3>
-                        <p className="text-sm text-zinc-400">{selectedEmail.leadEmail}</p>
+                        <Label className="text-gray-900 text-base font-semibold mb-2 block">Subject</Label>
+                        <Input
+                          value={editedSubject}
+                          onChange={(e) => setEditedSubject(e.target.value)}
+                          className="w-full text-base text-gray-900 bg-white border-2 border-gray-300 focus:border-purple-500 focus:ring-2 focus:ring-purple-200 rounded-lg px-4 py-3"
+                          placeholder="Email subject..."
+                        />
+                      </div>
+                      <div className="flex-1 flex flex-col">
+                        <Label className="text-gray-900 text-base font-semibold mb-2 block">Content (HTML)</Label>
+                        <Textarea
+                          value={editedContent}
+                          onChange={(e) => setEditedContent(e.target.value)}
+                          className="flex-1 min-h-[450px] text-sm text-gray-900 bg-white border-2 border-gray-300 focus:border-purple-500 focus:ring-2 focus:ring-purple-200 rounded-lg px-4 py-3 font-mono resize-none"
+                          placeholder="Email content (HTML)..."
+                        />
                       </div>
                     </div>
-                    <div className="flex items-center gap-2 text-sm text-zinc-400">
-                      <Building className="h-4 w-4" />
-                      <span>{selectedEmail.leadCompany}</span>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Badge className={getStatusBadge(selectedEmail.status)}>
-                      {selectedEmail.status.replace('_', ' ')}
-                    </Badge>
-                    <Badge className={getSentimentBadge(selectedEmail.sentiment)}>
-                      {selectedEmail.sentiment.replace('_', ' ')}
-                    </Badge>
-                  </div>
-                </div>
-                
-                <div className="space-y-2">
-                  <div className="flex items-center gap-2">
-                    <Clock className="h-4 w-4 text-zinc-400" />
-                    <span className="text-sm text-zinc-400">
-                      {t('received')}: {new Date(selectedEmail.receivedAt).toLocaleString()}
-                    </span>
-                  </div>
-                  {selectedEmail.isReply && (
-                    <div className="flex items-center gap-2">
-                      <Reply className="h-4 w-4 text-green-400" />
-                      <span className="text-sm text-green-400">{t('isReply')}</span>
-                    </div>
-                  )}
-                  {selectedEmail.isRecent && (
-                    <div className="flex items-center gap-2">
-                      <Star className="h-4 w-4 text-yellow-400" />
-                      <span className="text-sm text-yellow-400">{t('isRecent')}</span>
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              {/* Email Content */}
-              <div className="flex-1 overflow-y-auto p-6 min-h-0">
-                <div className="max-w-3xl mx-auto">
-                  {/* Subject Line */}
-                  <div className="mb-6">
-                    <h2 className="text-xl font-semibold text-zinc-200 mb-2">{t('subject')}</h2>
-                    <div className="bg-zinc-800/50 p-4 rounded-lg border border-zinc-600">
-                      <p className="text-zinc-200 font-medium">{selectedEmail.subject}</p>
-                    </div>
-                  </div>
-
-                  {/* Email Body */}
-                  <div>
-                    <h3 className="text-lg font-semibold text-zinc-200 mb-3">{t('content')}</h3>
-                    <div className="bg-white text-zinc-900 rounded-lg shadow-lg overflow-hidden">
-                      {/* Email Header */}
-                      <div className="bg-gray-50 px-6 py-4 border-b border-gray-200">
-                        <div className="flex items-center justify-between">
-                          <div>
-                            <p className="text-sm text-gray-600">{t('from')}:</p>
-                            <p className="font-medium">{selectedEmail.leadName} &lt;{selectedEmail.leadEmail}&gt;</p>
+                  ) : (
+                    <>
+                      {/* Gmail Email Header */}
+                      <div className="bg-white p-5 border-b border-gray-200 flex-shrink-0">
+                        <h2 className="text-2xl font-normal text-gray-900 mb-3">
+                          {editedSubject || selectedItem.aiResponse.generatedSubject}
+                        </h2>
+                        
+                        <div className="flex items-start gap-3">
+                          <div className="w-12 h-12 rounded-full bg-purple-500 flex items-center justify-center text-white font-semibold text-base flex-shrink-0">
+                            AI
                           </div>
-                          <div className="text-right">
-                            <p className="text-sm text-gray-600">{t('date')}:</p>
-                            <p className="text-sm">{new Date(selectedEmail.receivedAt).toLocaleDateString('en-US', {
-                              weekday: 'long',
-                              year: 'numeric',
-                              month: 'long',
-                              day: 'numeric',
-                              hour: '2-digit',
-                              minute: '2-digit'
-                            })}</p>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2">
+                              <span className="font-medium text-gray-900 text-base">
+                                You
+                              </span>
+                            </div>
+                            <div className="text-sm text-gray-500 mt-1">
+                              to {selectedItem.email.leadName}
+                            </div>
+                            <div className="text-sm text-gray-400 mt-1">
+                              Draft saved • Not sent
+                            </div>
                           </div>
                         </div>
                       </div>
                       
-                      {/* Email Content */}
-                      <div className="px-6 py-6">
-                        <div className="prose prose-sm max-w-none">
-                          <div className="whitespace-pre-wrap text-gray-800 leading-relaxed">
-                            {selectedEmail.content}
-                          </div>
-                        </div>
+                      {/* Gmail Email Body */}
+                      <div className="p-6 bg-white overflow-y-auto flex-1">
+                        <div 
+                          className="text-base text-gray-900 gmail-content leading-relaxed"
+                          dangerouslySetInnerHTML={{ __html: editedContent || selectedItem.aiResponse.generatedContent }}
+                        />
                       </div>
-                    </div>
-                  </div>
-
-                  {/* Email Metadata */}
-                  <div className="mt-6 grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
-                    <div className="bg-zinc-800/50 p-4 rounded-lg border border-zinc-600">
-                      <h4 className="font-medium text-zinc-200 mb-2">{t('emailDetails')}</h4>
-                      <div className="space-y-1 text-zinc-400">
-                        <div className="flex justify-between">
-                                                      <span>{t('status')}:</span>
-                          <span className="text-zinc-200">{selectedEmail.status.replace('_', ' ')}</span>
-                        </div>
-                        <div className="flex justify-between">
-                                                      <span>{t('sentiment')}:</span>
-                          <span className="text-zinc-200">{selectedEmail.sentiment.replace('_', ' ')}</span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span>Thread ID:</span>
-                          <span className="text-zinc-200">{selectedEmail.threadId || 'N/A'}</span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span>Lead ID:</span>
-                          <span className="text-zinc-200">{selectedEmail.leadId}</span>
-                        </div>
+                      
+                      {/* AI Info Footer */}
+                      <div className="p-4 bg-purple-50 border-t border-purple-200 flex-shrink-0">
+                        <p className="text-sm text-purple-700">
+                          <Bot className="h-4 w-4 inline mr-1" />
+                          {selectedItem.aiResponse.reasoning}
+                        </p>
                       </div>
-                    </div>
-                    
-                    <div className="bg-zinc-800/50 p-4 rounded-lg border border-zinc-600">
-                      <h4 className="font-medium text-zinc-200 mb-2">{t('actions')}</h4>
-                      <div className="space-y-2">
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="w-full justify-start"
-                          onClick={() => {
-                            navigator.clipboard.writeText(selectedEmail.content);
-                            toast.success(`${t('copyContent')} ${t('completed')}`);
-                          }}
-                        >
-                          <Copy className="h-4 w-4 mr-2" />
-                          {t('copyContent')}
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="w-full justify-start"
-                          onClick={() => {
-                            navigator.clipboard.writeText(selectedEmail.leadEmail);
-                            toast.success(`${t('copyEmailAddress')} ${t('completed')}`);
-                          }}
-                        >
-                          <Copy className="h-4 w-4 mr-2" />
-                          {t('copyEmailAddress')}
-                        </Button>
-                      </div>
-                    </div>
-                  </div>
+                    </>
+                  )}
                 </div>
+              )}
               </div>
             </div>
           )}
           
-          <DialogFooter className="border-t border-zinc-700 pt-4 flex-shrink-0">
+          <DialogFooter className="px-6 py-4 border-t border-zinc-700 flex-shrink-0">
             <Button
               variant="outline"
-              onClick={() => setShowEmailPreview(false)}
+              onClick={() => setShowPreviewDialog(false)}
+              className="mr-2"
             >
-              {t('close')}
+              Close
             </Button>
-            {selectedEmail && selectedEmail.status !== 'responded' && (
+            {selectedItem?.aiResponse?.status === 'draft' && (
               <Button
-                onClick={() => {
-                  setShowEmailPreview(false);
-                  generateAIResponse(selectedEmail);
-                }}
-                disabled={generating}
-                className="bg-purple-600 hover:bg-purple-700 text-white"
+                onClick={sendResponse}
+                disabled={sending}
+                className="bg-green-600 hover:bg-green-700 text-white"
               >
-                {generating ? (
+                {sending ? (
                   <>
                     <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
-                    {t('generatingResponse')}
+                    Sending...
                   </>
                 ) : (
                   <>
-                    <Bot className="h-4 w-4 mr-2" />
-                    {t('generateResponse')}
+                    <Send className="h-4 w-4 mr-2" />
+                    Send Email
                   </>
                 )}
               </Button>
@@ -916,301 +1118,154 @@ export default function EmailResponses() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-
-      {/* Response Editor Dialog */}
-      <Dialog open={showResponseEditor} onOpenChange={setShowResponseEditor}>
-        <DialogContent className="max-w-4xl bg-zinc-900 border-zinc-700">
-          <DialogHeader>
-            <DialogTitle className="text-zinc-200 flex items-center gap-2">
-              <Brain className="h-5 w-5" />
-              {t('editResponse')}
-            </DialogTitle>
-            <DialogDescription className="text-zinc-400">
-              {t('editResponseDescription')}
-            </DialogDescription>
-          </DialogHeader>
-          {selectedResponse && (
-            <div className="space-y-4">
-              {/* AI Confidence and Reasoning */}
-              <div className="bg-zinc-800/50 p-4 rounded-lg border border-zinc-600">
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-sm font-medium text-zinc-300">{t('confidence')}</span>
-                  <Badge className={selectedResponse.confidence >= 80 ? 'bg-green-100 text-green-800' : 
-                                  selectedResponse.confidence >= 60 ? 'bg-yellow-100 text-yellow-800' : 
-                                  'bg-red-100 text-red-800'}>
-                    {selectedResponse.confidence}%
-                  </Badge>
-                </div>
-                <p className="text-sm text-zinc-400">{selectedResponse.reasoning}</p>
-              </div>
-
-              {/* Edit Subject */}
-              <div>
-                <Label className="text-zinc-300">Subject</Label>
-                <Input
-                  value={editingResponse.subject}
-                  onChange={(e) => setEditingResponse(prev => ({ ...prev, subject: e.target.value }))}
-                  className="bg-zinc-800 border-zinc-600 text-zinc-200"
-                  placeholder="Email subject..."
-                />
-              </div>
-
-              {/* Edit Content */}
-              <div>
-                <Label className="text-zinc-300">Email Content</Label>
-                <Textarea
-                  value={editingResponse.content}
-                  onChange={(e) => setEditingResponse(prev => ({ ...prev, content: e.target.value }))}
-                  className="bg-zinc-800 border-zinc-600 text-zinc-200 min-h-[200px]"
-                  placeholder="Email content..."
-                />
-                <p className="text-xs text-zinc-500 mt-1">
-                  {editingResponse.content.length} characters
-                </p>
-              </div>
-            </div>
-          )}
-          <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => setShowResponseEditor(false)}
-            >
-              Cancel
-            </Button>
-            <Button
-              variant="outline"
-              onClick={() => {
-                // Copy to clipboard functionality
-                navigator.clipboard.writeText(editingResponse.content);
-                                            toast.success(`${t('copyContent')} ${t('completed')}`);
-              }}
-            >
-              <Copy className="h-4 w-4 mr-2" />
-              Copy
-            </Button>
-            <Button
-              onClick={() => selectedResponse && sendAIResponse(selectedResponse.id)}
-              disabled={sending || !editingResponse.subject || !editingResponse.content}
-              className="bg-green-600 hover:bg-green-700 text-white"
-            >
-              {sending ? (
-                <>
-                  <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
-                  Sending...
-                </>
-              ) : (
-                <>
-                  <Send className="h-4 w-4 mr-2" />
-                  Send Response
-                </>
-              )}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* AI Settings Section - Always Visible */}
-      <Card className="bg-zinc-900/50 border-zinc-700 mt-8">
-        <CardHeader>
-          <CardTitle className="text-zinc-200 flex items-center gap-2">
-            <Settings className="h-5 w-5" />
-            AI Response Configuration
-          </CardTitle>
-          <p className="text-zinc-400 text-sm">
-            Configure how AI generates and sends email responses
-          </p>
-        </CardHeader>
-        <CardContent className="space-y-6">
-          {/* Top row - Enable AI and Auto-send */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <Label className="text-zinc-300">Enable AI Responses</Label>
-                <p className="text-sm text-zinc-400">Automatically generate responses for incoming emails</p>
-              </div>
-              <Switch
-                checked={aiSettings.isEnabled}
-                onCheckedChange={(checked) => setAISettings(prev => ({ ...prev, isEnabled: checked }))}
-              />
-            </div>
-
-            <div>
-              <Label className="text-zinc-300">Auto-send Threshold (%)</Label>
-              <Input
-                type="number"
-                min="0"
-                max="100"
-                value={aiSettings.autoSendThreshold}
-                onChange={(e) => setAISettings(prev => ({ ...prev, autoSendThreshold: parseInt(e.target.value) || 0 }))}
-                className="bg-zinc-800 border-zinc-600 text-zinc-200 mt-1"
-              />
-              <p className="text-sm text-zinc-400 mt-1">
-                Responses with confidence above this threshold will be sent automatically
-              </p>
-              {validationErrors.autoSendThreshold && (
-                <p className="text-xs text-red-500 mt-1">{validationErrors.autoSendThreshold}</p>
-              )}
-            </div>
-          </div>
-
-          <Separator className="bg-zinc-700" />
-
-          {/* Company Information */}
-          <div>
-            <h3 className="text-lg font-medium text-zinc-200 mb-4">Company Information</h3>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div>
-                <Label className="text-zinc-300">Company Name</Label>
-                <Input
-                  value={aiSettings.companyName}
-                  onChange={(e) => setAISettings(prev => ({ ...prev, companyName: e.target.value }))}
-                  className="bg-zinc-800 border-zinc-600 text-zinc-200 mt-1"
-                  placeholder="Your Company Name"
-                />
-                {validationErrors.companyName && (
-                  <p className="text-xs text-red-500 mt-1">{validationErrors.companyName}</p>
-                )}
-              </div>
-              <div>
-                <Label className="text-zinc-300">Sender Name</Label>
-                <Input
-                  value={aiSettings.senderName}
-                  onChange={(e) => setAISettings(prev => ({ ...prev, senderName: e.target.value }))}
-                  className="bg-zinc-800 border-zinc-600 text-zinc-200 mt-1"
-                  placeholder="Your Name"
-                />
-                {validationErrors.senderName && (
-                  <p className="text-xs text-red-500 mt-1">{validationErrors.senderName}</p>
-                )}
-              </div>
-              <div>
-                <Label className="text-zinc-300">Sender Email</Label>
-                <Input
-                  type="email"
-                  value={aiSettings.senderEmail}
-                  onChange={(e) => setAISettings(prev => ({ ...prev, senderEmail: e.target.value }))}
-                  className="bg-zinc-800 border-zinc-600 text-zinc-200 mt-1"
-                  placeholder="hello@yourcompany.com"
-                />
-                {validationErrors.senderEmail && (
-                  <p className="text-xs text-red-500 mt-1">{validationErrors.senderEmail}</p>
-                )}
-              </div>
-            </div>
-          </div>
-
-          <Separator className="bg-zinc-700" />
-
-          {/* AI Response Configuration */}
-          <div>
-            <h3 className="text-lg font-medium text-zinc-200 mb-4">AI Response Configuration</h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div>
-                <Label className="text-zinc-300">Default Tone</Label>
-                <Select value={aiSettings.defaultTone} onValueChange={(value) => setAISettings(prev => ({ ...prev, defaultTone: value as any }))}>
-                  <SelectTrigger className="bg-zinc-800 border-zinc-600 text-zinc-200 mt-1">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="professional">Professional</SelectItem>
-                    <SelectItem value="friendly">Friendly</SelectItem>
-                    <SelectItem value="casual">Casual</SelectItem>
-                    <SelectItem value="formal">Formal</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div>
-                <Label className="text-zinc-300">Max Response Length</Label>
-                <Input
-                  type="number"
-                  min="50"
-                  max="1000"
-                  value={aiSettings.maxResponseLength}
-                  onChange={(e) => setAISettings(prev => ({ ...prev, maxResponseLength: parseInt(e.target.value) || 300 }))}
-                  className="bg-zinc-800 border-zinc-600 text-zinc-200 mt-1"
-                  placeholder="300"
-                />
-                <p className="text-sm text-zinc-400 mt-1">Maximum characters for AI responses</p>
-                {validationErrors.maxResponseLength && (
-                  <p className="text-xs text-red-500 mt-1">{validationErrors.maxResponseLength}</p>
-                )}
-              </div>
-            </div>
-
-
-          </div>
-
-          <Separator className="bg-zinc-700" />
-
-          {/* AI Response Prompt */}
-          <div>
-            <Label className="text-zinc-300 text-lg font-medium">AI Response Prompt</Label>
-            <p className="text-sm text-zinc-400 mb-3">
-              Write the main prompt that will guide AI responses. This is the core instruction for how AI should behave.
-            </p>
-            <Textarea
-              value={aiSettings.responsePrompt}
-              onChange={(e) => setAISettings(prev => ({ ...prev, responsePrompt: e.target.value }))}
-              placeholder="You are a professional sales representative responding to email inquiries. Always be helpful, friendly, and focus on scheduling meetings. Keep responses concise and personalized."
-              className="bg-zinc-800 border-zinc-600 text-zinc-200 min-h-[120px]"
-              rows={5}
-            />
-            <p className="text-xs text-zinc-500 mt-1">
-              {aiSettings.responsePrompt.length} characters
-            </p>
-            {validationErrors.responsePrompt && (
-              <p className="text-xs text-red-500 mt-1">{validationErrors.responsePrompt}</p>
-            )}
-          </div>
-
-          {/* Additional Instructions */}
-          <div>
-            <Label className="text-zinc-300">Additional Instructions</Label>
-            <p className="text-sm text-zinc-400 mb-2">
-              Extra guidelines and context for AI responses
-            </p>
-            <Textarea
-              value={aiSettings.customInstructions}
-              onChange={(e) => setAISettings(prev => ({ ...prev, customInstructions: e.target.value }))}
-              placeholder="Additional instructions for AI responses..."
-              className="bg-zinc-800 border-zinc-600 text-zinc-200"
-              rows={3}
-            />
-          </div>
-
-          {/* Email Signature */}
-          <div>
-            <Label className="text-zinc-300">Email Signature</Label>
-            <p className="text-sm text-zinc-400 mb-2">
-              Signature that will be automatically added to all AI responses
-            </p>
-            <Textarea
-              value={aiSettings.signature}
-              onChange={(e) => setAISettings(prev => ({ ...prev, signature: e.target.value }))}
-              placeholder="Best regards,&#10;Your Name&#10;Your Company&#10;https://yourwebsite.com"
-              className="bg-zinc-800 border-zinc-600 text-zinc-200"
-              rows={4}
-            />
-            {validationErrors.signature && (
-              <p className="text-xs text-red-500 mt-1">{validationErrors.signature}</p>
-            )}
-          </div>
-
-          {/* Save Button */}
-          <div className="flex justify-end pt-4">
-            <Button
-              onClick={saveAISettings}
-              className="bg-blue-600 hover:bg-blue-700 text-white px-8"
-              size="lg"
-              disabled={!isValid}
-            >
-              <Settings className="h-4 w-4 mr-2" />
-                              {t('saveAllSettings')}
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
     </div>
   );
-} 
+}
+
+// Email Response Card Component
+function EmailResponseCard({ 
+  item, 
+  onView, 
+  onGenerate,
+  onDirectSend,
+  generating,
+  sending 
+}: { 
+  item: CombinedEmailData; 
+  onView: (item: CombinedEmailData) => void;
+  onGenerate: (emailId: string) => void;
+  onDirectSend: (item: CombinedEmailData) => void;
+  generating: boolean;
+  sending: boolean;
+}) {
+  const getStatusBadge = (status: string) => {
+    const variants = {
+      'draft': 'bg-yellow-100 text-yellow-800',
+      'sent': 'bg-green-100 text-green-800',
+      'failed': 'bg-red-100 text-red-800',
+      'pending_ai': 'bg-blue-100 text-blue-800',
+      'unread': 'bg-orange-100 text-orange-800'
+    };
+    return variants[status as keyof typeof variants] || 'bg-gray-100 text-gray-800';
+  };
+
+  return (
+    <Card className="bg-zinc-800/50 border-zinc-600 hover:bg-zinc-800/70 transition-colors">
+      <CardContent className="p-4">
+        <div className="flex items-start justify-between gap-4">
+          {/* Left: Email Info */}
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2 mb-2">
+              <h3 className="font-medium text-zinc-200 truncate">
+                {item.email.leadName} ({item.email.leadCompany})
+              </h3>
+              <Badge className={getStatusBadge(item.email.status)}>
+                {item.email.status}
+              </Badge>
+              {item.aiResponse && (
+                <Badge className={getStatusBadge(item.aiResponse.status)}>
+                  <Bot className="h-3 w-3 mr-1" />
+                  {item.aiResponse.status}
+                </Badge>
+              )}
+              {item.email.isThirdReply && (
+                <Badge className="bg-orange-600 text-white">
+                  🇳🇱 Dutch Template
+                </Badge>
+              )}
+            </div>
+            
+            <p className="text-sm text-zinc-300 font-medium mb-1">
+              📧 {item.email.subject}
+            </p>
+            <p className="text-sm text-zinc-400 line-clamp-2 mb-2">
+              {item.email.content}
+            </p>
+            
+            {item.aiResponse && (
+              <div className="bg-zinc-700/30 rounded p-2 mt-2">
+                <p className="text-xs text-purple-300 font-medium mb-1">
+                  <Bot className="h-3 w-3 inline mr-1" />
+                  AI Response Ready:
+                </p>
+                <p className="text-xs text-zinc-400 line-clamp-1">
+                  {item.aiResponse.generatedSubject}
+                </p>
+              </div>
+            )}
+            
+            <div className="flex items-center gap-4 mt-2 text-xs text-zinc-500">
+              <span className="flex items-center gap-1">
+                <Clock className="h-3 w-3" />
+                {new Date(item.email.receivedAt).toLocaleDateString()}
+              </span>
+              <span>{item.email.leadEmail}</span>
+            </div>
+          </div>
+
+          {/* Right: Actions */}
+          <div className="flex flex-col gap-2">
+            {item.aiResponse ? (
+              <>
+                {item.aiResponse.status === 'draft' ? (
+                  <>
+                    {/* Review Button - Opens popup */}
+                    <Button
+                      size="sm"
+                      onClick={() => onView(item)}
+                      variant="outline"
+                      className="border-blue-600 text-blue-600 hover:bg-blue-50"
+                    >
+                      <Eye className="h-4 w-4 mr-1" />
+                      Review
+                    </Button>
+                    
+                    {/* Send Button - Direct send with loader */}
+                    <Button
+                      size="sm"
+                      onClick={() => onDirectSend(item)}
+                      disabled={sending}
+                      className="bg-green-600 hover:bg-green-700 text-white"
+                    >
+                      {sending ? (
+                        <RefreshCw className="h-4 w-4 mr-1 animate-spin" />
+                      ) : (
+                        <Send className="h-4 w-4 mr-1" />
+                      )}
+                      {sending ? 'Sending...' : 'Send'}
+                    </Button>
+                  </>
+                ) : (
+                  <Button
+                    size="sm"
+                    onClick={() => onView(item)}
+                    className="bg-blue-600 hover:bg-blue-700 text-white"
+                  >
+                    <Eye className="h-4 w-4 mr-1" />
+                    View
+                  </Button>
+                )}
+              </>
+            ) : (
+              <Button
+                size="sm"
+                onClick={() => onGenerate(item.email.id)}
+                disabled={generating}
+                className="bg-purple-600 hover:bg-purple-700 text-white"
+              >
+                {generating ? (
+                  <RefreshCw className="h-4 w-4 animate-spin" />
+                ) : (
+                  <>
+                    <Bot className="h-4 w-4 mr-1" />
+                    Generate
+                  </>
+                )}
+              </Button>
+            )}
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}

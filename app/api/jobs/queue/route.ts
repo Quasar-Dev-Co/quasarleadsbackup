@@ -199,4 +199,4 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       error: error.message || 'Failed to fetch jobs'
     }, { status: 500 });
   }
-} 
+}

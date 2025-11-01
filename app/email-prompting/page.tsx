@@ -857,13 +857,24 @@ Return as JSON:
 
   // Export all templates (7 stages) as JSON bundle
   const exportAllTemplatesJSON = () => {
+    if (templates.length === 0) {
+      toast.error('No templates to export. Please create templates first.');
+      return;
+    }
+
     const bundle = {
-      version: 1,
+      version: 2, // Updated version for new modular format
+      exportDate: new Date().toISOString(),
+      totalTemplates: templates.length,
       templates: templates.map(t => ({
         stage: t.stage,
         subject: t.subject,
-        htmlContent: t.htmlContent,
-        textContent: t.textContent,
+        contentPrompt: (t as any).contentPrompt || '',
+        emailSignature: (t as any).emailSignature || '',
+        mediaLinks: (t as any).mediaLinks || '',
+        // Keep old fields for backward compatibility
+        htmlContent: t.htmlContent || '',
+        textContent: t.textContent || '',
         isActive: t.isActive,
         variables: t.variables,
         timing: t.timing
@@ -871,7 +882,7 @@ Return as JSON:
     };
     const data = JSON.stringify(bundle, null, 2);
     const blob = new Blob([data], { type: 'application/json' });
-    const filename = `email-templates-bundle.json`;
+    const filename = `email-templates-all-${templates.length}-${new Date().toISOString().split('T')[0]}.json`;
     const link = document.createElement('a');
     const url = URL.createObjectURL(blob);
     link.href = url;
@@ -879,14 +890,33 @@ Return as JSON:
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
-    toast.success('All templates exported as a single JSON file');
+    URL.revokeObjectURL(url);
+    toast.success(`✅ Exported ${templates.length} template(s) successfully!`);
   };
 
   // Export current template as JSON
   const exportTemplateJSON = () => {
-    const data = JSON.stringify(currentTemplate, null, 2);
+    if (!emailSubject.trim() && !contentPrompt.trim()) {
+      toast.error('No template data to export. Please fill in the template first.');
+      return;
+    }
+
+    const exportData = {
+      version: 2,
+      exportDate: new Date().toISOString(),
+      stage: activeTab,
+      subject: emailSubject,
+      contentPrompt: contentPrompt,
+      emailSignature: emailSignature,
+      mediaLinks: mediaLinks,
+      isActive: currentTemplate.isActive ?? true,
+      variables: extractVariables(contentPrompt + emailSignature),
+      timing: getEmailTiming(activeTab)
+    };
+    const data = JSON.stringify(exportData, null, 2);
     const blob = new Blob([data], { type: 'application/json' });
-    const filename = `email-template-${currentTemplate.stage || 'template'}.json`;
+    const stageName = PIPELINE_STAGES(t).find(s => s.value === activeTab)?.label || 'template';
+    const filename = `email-template-${activeTab}-${stageName.replace(/\s+/g, '-')}.json`;
     const link = document.createElement('a');
     const url = URL.createObjectURL(blob);
     link.href = url;
@@ -894,70 +924,128 @@ Return as JSON:
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
-    toast.success('Template exported as JSON');
+    URL.revokeObjectURL(url);
+    toast.success('✅ Current template exported as JSON');
   };
 
   // Export current template as PDF (simple formatting)
   const exportTemplatePDF = async () => {
     try {
+      if (!emailSubject.trim() && !contentPrompt.trim()) {
+        toast.error('No template data to export. Please fill in the template first.');
+        return;
+      }
+
       const { jsPDF } = await import('jspdf');
       const doc = new jsPDF({ unit: 'pt', format: 'a4' });
       const margin = 40;
       const maxWidth = doc.internal.pageSize.getWidth() - margin * 2;
       let y = margin;
 
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(16);
-      doc.text(`Template: ${currentTemplate.stage || ''}`, margin, y);
-      y += 22;
+      const stageName = PIPELINE_STAGES(t).find(s => s.value === activeTab)?.label || 'Template';
 
+      // Title
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(18);
+      doc.text(stageName, margin, y);
+      y += 30;
+
+      // Subject
       doc.setFontSize(12);
       doc.text('Subject:', margin, y);
       doc.setFont('helvetica', 'normal');
-      const subjectLines = doc.splitTextToSize(currentTemplate.subject || '', maxWidth);
-      doc.text(subjectLines, margin + 60, y);
-      y += Math.max(18, subjectLines.length * 14) + 10;
+      const subjectLines = doc.splitTextToSize(emailSubject || 'No subject', maxWidth - 80);
+      doc.text(subjectLines, margin + 80, y);
+      y += Math.max(20, subjectLines.length * 14) + 15;
 
+      // Content Prompt
       doc.setFont('helvetica', 'bold');
-      doc.text('Text version:', margin, y);
+      doc.text('Content Prompt:', margin, y);
       y += 16;
       doc.setFont('helvetica', 'normal');
-      const textLines = doc.splitTextToSize(currentTemplate.textContent || '', maxWidth);
-      textLines.forEach((line: string) => {
-        if (y > doc.internal.pageSize.getHeight() - margin) {
+      const promptLines = doc.splitTextToSize(contentPrompt || 'No content prompt', maxWidth);
+      promptLines.forEach((line: string) => {
+        if (y > doc.internal.pageSize.getHeight() - margin - 20) {
           doc.addPage();
           y = margin;
         }
         doc.text(line, margin, y);
         y += 14;
       });
+      y += 20;
 
-      const filename = `email-template-${currentTemplate.stage || 'template'}.pdf`;
+      // Signature
+      if (emailSignature.trim()) {
+        if (y > doc.internal.pageSize.getHeight() - margin - 100) {
+          doc.addPage();
+          y = margin;
+        }
+        doc.setFont('helvetica', 'bold');
+        doc.text('Signature:', margin, y);
+        y += 16;
+        doc.setFont('helvetica', 'normal');
+        const sigLines = doc.splitTextToSize(emailSignature.replace(/<[^>]*>/g, ''), maxWidth);
+        sigLines.forEach((line: string) => {
+          if (y > doc.internal.pageSize.getHeight() - margin - 20) {
+            doc.addPage();
+            y = margin;
+          }
+          doc.text(line, margin, y);
+          y += 14;
+        });
+      }
+
+      const filename = `email-template-${activeTab}-${stageName.replace(/\s+/g, '-')}.pdf`;
       doc.save(filename);
-      toast.success('Template exported as PDF');
+      toast.success('✅ Template exported as PDF');
     } catch (e) {
       console.error(e);
-      toast.error('Failed to export PDF');
+      toast.error('Failed to export PDF. Error: ' + (e as Error).message);
     }
   };
 
   // Export current template as DOCX
   const exportTemplateDOCX = async () => {
     try {
+      if (!emailSubject.trim() && !contentPrompt.trim()) {
+        toast.error('No template data to export. Please fill in the template first.');
+        return;
+      }
+
       const { Document, Packer, Paragraph, TextRun } = await import('docx');
+      const stageName = PIPELINE_STAGES(t).find(s => s.value === activeTab)?.label || 'Template';
+
+      const children = [
+        new Paragraph({ children: [ new TextRun({ text: stageName, bold: true, size: 32 }) ] }),
+        new Paragraph({ children: [ new TextRun({ text: '' }) ] }),
+        new Paragraph({ children: [ new TextRun({ text: 'Subject:', bold: true, size: 24 }) ] }),
+        new Paragraph({ children: [ new TextRun({ text: emailSubject || 'No subject', size: 22 }) ] }),
+        new Paragraph({ children: [ new TextRun({ text: '' }) ] }),
+        new Paragraph({ children: [ new TextRun({ text: 'Content Prompt:', bold: true, size: 24 }) ] }),
+        new Paragraph({ children: [ new TextRun({ text: contentPrompt || 'No content prompt', size: 22 }) ] }),
+        new Paragraph({ children: [ new TextRun({ text: '' }) ] }),
+      ];
+
+      if (emailSignature.trim()) {
+        children.push(
+          new Paragraph({ children: [ new TextRun({ text: 'Signature:', bold: true, size: 24 }) ] }),
+          new Paragraph({ children: [ new TextRun({ text: emailSignature.replace(/<[^>]*>/g, ''), size: 22 }) ] }),
+          new Paragraph({ children: [ new TextRun({ text: '' }) ] }),
+        );
+      }
+
+      if (mediaLinks.trim()) {
+        children.push(
+          new Paragraph({ children: [ new TextRun({ text: 'Media Links:', bold: true, size: 24 }) ] }),
+          new Paragraph({ children: [ new TextRun({ text: mediaLinks.substring(0, 500), size: 20 }) ] }),
+        );
+      }
+
       const doc = new Document({
-        sections: [{
-          children: [
-            new Paragraph({ children: [ new TextRun({ text: `Template: ${currentTemplate.stage || ''}`, bold: true, size: 28 }) ] }),
-            new Paragraph({ children: [ new TextRun({ text: `Subject: ${currentTemplate.subject || ''}`, size: 24 }) ] }),
-            new Paragraph({ children: [ new TextRun({ text: '' }) ] }),
-            new Paragraph({ children: [ new TextRun({ text: 'Text version:', bold: true, size: 24 }) ] }),
-            new Paragraph({ children: [ new TextRun({ text: currentTemplate.textContent || '', size: 22 }) ] }),
-          ]
-        }]
+        sections: [{ children }]
       });
       const blob = await Packer.toBlob(doc);
-      const filename = `email-template-${currentTemplate.stage || 'template'}.docx`;
+      const filename = `email-template-${activeTab}-${stageName.replace(/\s+/g, '-')}.docx`;
       const link = document.createElement('a');
       const url = URL.createObjectURL(blob);
       link.href = url;
@@ -965,10 +1053,11 @@ Return as JSON:
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
-      toast.success('Template exported as DOCX');
+      URL.revokeObjectURL(url);
+      toast.success('✅ Template exported as DOCX');
     } catch (e) {
       console.error(e);
-      toast.error('Failed to export DOCX');
+      toast.error('Failed to export DOCX. Error: ' + (e as Error).message);
     }
   };
 
@@ -978,50 +1067,78 @@ Return as JSON:
     try {
       const isJson = file.name.toLowerCase().endsWith('.json');
       if (!isJson) {
-        toast.error('Only JSON files are accepted');
+        toast.error('❌ Only JSON files are accepted');
         return;
       }
       const text = await file.text();
       const data = JSON.parse(text);
       if (!data || typeof data !== 'object') {
-        toast.error('Invalid JSON');
+        toast.error('❌ Invalid JSON format');
         return;
       }
       const userId = await auth.getCurrentUserId();
       if (!userId) {
-        toast.error('User authentication required. Please login again.');
+        toast.error('❌ User authentication required. Please login again.');
         return;
       }
 
       // If it looks like a bundle with templates array → bulk import to server
       if (Array.isArray((data as any).templates)) {
+        const templateCount = (data as any).templates.length;
+        const loadingToast = toast.loading(`📥 Importing ${templateCount} template(s)...`);
+
         const res = await fetch('/api/email-templates/bulk', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ userId, templates: (data as any).templates })
         });
         const json = await res.json();
+        
+        toast.dismiss(loadingToast);
+        
         if (json.success) {
-          toast.success('All templates imported successfully');
+          toast.success(`✅ Successfully imported ${templateCount} template(s)!`);
           await loadTemplates();
         } else {
-          toast.error(json.error || 'Failed to import bundle');
+          toast.error(`❌ Failed to import: ${json.error || 'Unknown error'}`);
         }
       } else {
-        // Single template fallback: load into editor only
-        setCurrentTemplate(prev => ({
-          ...prev,
-          stage: (data as any).stage || prev.stage,
+        // Single template: save directly to database
+        const loadingToast = toast.loading('📥 Importing single template...');
+
+        const templateData = {
+          stage: (data as any).stage || activeTab,
           subject: (data as any).subject || '',
-          htmlContent: (data as any).htmlContent || '',
-          textContent: (data as any).textContent || '',
+          contentPrompt: (data as any).contentPrompt || (data as any).htmlContent || '',
+          emailSignature: (data as any).emailSignature || '',
+          mediaLinks: (data as any).mediaLinks || '',
           isActive: (data as any).isActive ?? true,
-        }));
-        toast.success('Template loaded. Click Save to store it.');
+          variables: (data as any).variables || extractVariables(((data as any).contentPrompt || '') + ((data as any).emailSignature || '')),
+          timing: (data as any).timing || getEmailTiming((data as any).stage || activeTab),
+          userId
+        };
+
+        const res = await fetch('/api/email-templates', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(templateData),
+        });
+        const json = await res.json();
+        
+        toast.dismiss(loadingToast);
+        
+        if (json.success) {
+          toast.success('✅ Template imported and saved successfully!');
+          await loadTemplates();
+          // Switch to the imported template's tab
+          setActiveTab(templateData.stage);
+        } else {
+          toast.error(`❌ Failed to import: ${json.error || 'Unknown error'}`);
+        }
       }
     } catch (e) {
-      console.error(e);
-      toast.error('Failed to import JSON');
+      console.error('Import error:', e);
+      toast.error(`❌ Failed to import: ${(e as Error).message}`);
     } finally {
       if (importFileRef.current) importFileRef.current.value = '';
     }
